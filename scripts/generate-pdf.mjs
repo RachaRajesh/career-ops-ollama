@@ -13,7 +13,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { chat } from './lib/ollama.mjs';
+import { chat } from './lib/llm.mjs';
 import { paths, c, parseArgs, readFileOr, ensureDir, slug, timestamp } from './lib/util.mjs';
 
 const args = parseArgs();

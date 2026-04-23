@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import 'dotenv/config';
-import { chat, chatJSON, config as llmConfig } from './lib/ollama.mjs';
+import { chat, chatJSON, getConfig, PROVIDER_NAME } from './lib/llm.mjs';
 import {
   paths, c, parseArgs, readFileOr, readYaml, ensureDir, slug, timestamp, resolveJdSource,
 } from './lib/util.mjs';
@@ -33,7 +33,9 @@ async function main() {
   const evalMode = readFileOr(path.join(paths.modes, 'oferta.md'));
   if (!evalMode) throw new Error(`Missing ${paths.modes}/oferta.md — the evaluation prompt.`);
 
-  console.log(c.dim(`  model:   ${llmConfig.MODEL}`));
+  const llmConfig = await getConfig();
+  console.log(c.dim(`  provider: ${PROVIDER_NAME}`));
+  console.log(c.dim(`  model:    ${llmConfig.MODEL}`));
   console.log(c.dim(`  JD size: ${jd.length} chars`));
   console.log(c.dim(`  CV size: ${cv.length} chars`));
   console.log('');

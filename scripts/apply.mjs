@@ -29,7 +29,7 @@
 
 import fs from 'node:fs';
 import 'dotenv/config';
-import { chatJSON } from './lib/ollama.mjs';
+import { chatJSON } from './lib/llm.mjs';
 import { paths, c, parseArgs, readFileOr, readYaml } from './lib/util.mjs';
 
 const args = parseArgs();

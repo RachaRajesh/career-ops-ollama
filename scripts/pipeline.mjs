@@ -16,7 +16,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { spawn } from 'node:child_process';
 import 'dotenv/config';
-import { chatJSON, chat } from './lib/ollama.mjs';
+import { chatJSON, chat } from './lib/llm.mjs';
 import {
   paths, c, readFileOr, readYaml, ensureDir, slug, timestamp, fetchUrlText,
 } from './lib/util.mjs';
