@@ -33,7 +33,7 @@ async function main() {
   const profile = readYaml(paths.profile);
 
   const company = (report.match(/^# (.+?) —/m)?.[1] || 'company').trim();
-  const role    = (report.match(/^# .+? — (.+)$/m)?.[1] || 'role').trim();
+  const role    = cleanRoleTitle((report.match(/^# .+? — (.+)$/m)?.[1] || 'role').trim());
 
   console.log(c.cyan(`→ tailoring CV for ${company} / ${role}`));
   console.log(c.dim('  asking the model for structured resume data...'));
@@ -71,9 +71,10 @@ async function main() {
       path: pdfPath,
       format: 'Letter',
       printBackground: true,
-      // Margins are zero because the template uses a full-bleed sidebar that
-      // bleeds to the page edge. Internal padding is handled in CSS.
-      margin: { top: '0', bottom: '0', left: '0', right: '0' },
+      // Top/bottom margins are per-page, so page 2 also gets breathing room
+      // from the page edges. Left/right stays at 0 so the black header band
+      // can bleed full-width on page 1.
+      margin: { top: '0.5in', bottom: '0.4in', left: '0', right: '0' },
     });
     console.log(c.green(`✓ PDF: ${pdfPath}`));
   } finally {
@@ -247,7 +248,13 @@ async function tailorResume({ cv, profile, report, targetCompany, targetRole }) 
   ].join('\n');
 
   const out = await chatJSON({ system, user, temperature: 0.4 });
-  return normalizeResume(out, profile);
+  const normalized = normalizeResume(out, profile, { forcedRoleTitle: targetRole });
+
+  // After initial generation, expand any too-short bullets (one-liners read
+  // as AI-generated and we promised the user 2-3 line bullets). This is the
+  // "self-healing" pass that handles models that ignore prompt instructions.
+  await expandShortBullets(normalized, { cv, profile });
+  return normalized;
 }
 
 /**
@@ -257,9 +264,13 @@ async function tailorResume({ cv, profile, report, targetCompany, targetRole }) 
  * structure the template expects, falling back to profile.yml values where
  * the model omitted things.
  */
-function normalizeResume(raw, profile) {
+function normalizeResume(raw, profile, opts = {}) {
   const r = raw || {};
   const contact = r.contact || {};
+  // ★ Forced role title — bypasses whatever the LLM returned. This kills
+  // the "AI Engineer (.NET, Claude Code)" hallucination at the source by
+  // never trusting the LLM for this one specific field.
+  const forcedRoleTitle = opts.forcedRoleTitle;
 
   // Skills: tolerate flat array or array-of-strings
   let skills = r.skills;
@@ -279,7 +290,7 @@ function normalizeResume(raw, profile) {
 
   return {
     name: r.name || profile.name || 'Your Name',
-    role_target: r.role_target || (Array.isArray(profile.desired_roles) ? profile.desired_roles[0] : '') || '',
+    role_target: forcedRoleTitle || r.role_target || (Array.isArray(profile.desired_roles) ? profile.desired_roles[0] : '') || '',
     contact: {
       location: contact.location || profile.location || '',
       email:    contact.email    || profile.email    || '',
@@ -314,6 +325,86 @@ function normalizeResume(raw, profile) {
 
 function stripProtocol(url) {
   return String(url || '').replace(/^https?:\/\//, '').replace(/^www\./, '');
+}
+
+/**
+ * Clean a role title:
+ *  - Strip leading/trailing whitespace
+ *  - Remove any parentheticals containing tech-list noise like "(Python, AWS)"
+ *    that the LLM sometimes injects via metadata extraction
+ *  - Collapse multiple spaces
+ */
+function cleanRoleTitle(s) {
+  return String(s || '')
+    .trim()
+    .replace(/\s*\([^)]*\)\s*$/, '')   // trailing "(...)" — usually tech list noise
+    .replace(/\s+/g, ' ')
+    .trim() || 'Engineer';
+}
+
+/**
+ * After the LLM returns its tailored resume, scan each job's bullets. If any
+ * are too short (one-liners, < 150 chars), make a SECOND LLM call to expand
+ * THOSE specific bullets to 2-3 substantive lines. The original CV is provided
+ * as context so the expansion stays grounded.
+ *
+ * This is the "self-healing" pass — it compensates for local models that
+ * understand the prompt but don't follow the length instruction reliably.
+ */
+async function expandShortBullets(resume, { cv, profile }) {
+  const SHORT_THRESHOLD = 150;  // chars — bullets shorter than this get expanded
+
+  for (const job of resume.experience) {
+    const shortBullets = job.bullets
+      .map((b, i) => ({ text: b, index: i, len: b.length }))
+      .filter((b) => b.len < SHORT_THRESHOLD);
+
+    if (shortBullets.length === 0) continue; // all bullets already long enough
+
+    console.log(c.dim(`  expanding ${shortBullets.length} short bullet(s) for ${job.company}...`));
+
+    try {
+      const expanded = await chatJSON({
+        system: [
+          'You expand short resume bullets into longer, detailed 2-3 line versions.',
+          '',
+          'STRICT RULES:',
+          '  1. Use ONLY context from the candidate\'s CV. Never invent technologies,',
+          '     metrics, or accomplishments not already in the CV.',
+          '  2. Each expanded bullet should be 2-3 lines (~180-280 chars), weaving:',
+          '     - What was built (the action)',
+          '     - How it was built (technologies, methods — must be from CV)',
+          '     - Outcome or scope (only if the CV mentions it)',
+          '  3. Tech mentioned must be tech the CV says was used at THIS specific company.',
+          `     This job is at: ${job.company}.`,
+          '  4. Do NOT change verb tense, dates, or factual claims.',
+          '  5. Output ONLY JSON: { "expanded": ["bullet 1", "bullet 2", ...] }',
+          '     (in same order as input)',
+        ].join('\n'),
+        user: [
+          `═══ CANDIDATE'S FULL CV (source of truth) ═══`,
+          cv,
+          '',
+          `═══ JOB BEING EXPANDED ═══`,
+          `${job.title} at ${job.company} (${job.dates})`,
+          '',
+          `═══ BULLETS TO EXPAND (these are too short — make them 2-3 lines each) ═══`,
+          ...shortBullets.map((b, i) => `${i + 1}. ${b.text}`),
+        ].join('\n'),
+        temperature: 0.4,
+      });
+
+      const expandedList = Array.isArray(expanded.expanded) ? expanded.expanded : [];
+      shortBullets.forEach((sb, i) => {
+        const newText = expandedList[i];
+        if (newText && typeof newText === 'string' && newText.length > sb.len) {
+          job.bullets[sb.index] = newText.trim();
+        }
+      });
+    } catch (err) {
+      console.log(c.yellow(`  (expansion failed for ${job.company}: ${err.message} — keeping originals)`));
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
