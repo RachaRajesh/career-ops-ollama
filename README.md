@@ -1,68 +1,166 @@
 # Career-Ops (Ollama Edition)
 
-A local-first fork of [santifer/career-ops](https://github.com/santifer/career-ops) that swaps Claude Code for **local LLMs via Ollama**, with an optional [openclaude](https://github.com/Gitlawb/openclaude) provider, an **interactive menu**, a **multi-link batch pipeline**, and a **human-in-the-loop auto-apply** feature.
+A local-first job search assistant. Runs on your computer, uses local AI models (Ollama), and helps you:
 
-Everything runs on your machine. No API keys required, no data leaving your laptop.
+- **Score jobs** against your resume — should you apply or skip?
+- **Tailor your resume** for each job automatically
+- **Auto-fill applications** (you still review and click submit)
 
----
+No API keys. No data leaves your laptop. Works offline once installed.
 
-## Forked from
-
-This project stands on the shoulders of two open-source projects. If you find this fork useful, star the upstream repos:
-
-- **[santifer/career-ops](https://github.com/santifer/career-ops)** — the original job search system. The evaluation rubric, PDF template, mode prompts, Go dashboard, and general architecture are Santiago's work. This fork swaps the LLM backend and adds a few features; the hard thinking about *how* to evaluate jobs is all his.
-- **[Gitlawb/openclaude](https://github.com/Gitlawb/openclaude)** — optional provider. Coding-agent CLI that routes to 200+ models through an OpenAI-compatible API. Used here as an alternate LLM backend when you want unified provider routing.
-
-MIT License, inherited from upstream.
+**Forked from** [santifer/career-ops](https://github.com/santifer/career-ops). Optional [openclaude](https://github.com/Gitlawb/openclaude) provider supported.
 
 ---
 
-## What's different from upstream
+# 🚀 Brand new? Start here.
 
-| Feature | Upstream | This fork |
-|---|---|---|
-| LLM backend | Claude Code / Gemini CLI / OpenCode | **Ollama (default)** or **openclaude** (opt-in) |
-| Entry point | Slash commands (`/career-ops ...`) | **`npm start` → interactive menu** |
-| Multi-link workflow | Batch parallel workers | **Interactive batch pipeline** — paste URLs, filter by score, pick winners |
-| Gap analysis | Part of evaluation | **Dedicated step** — flags JD requirements your CV doesn't show |
-| Auto-apply | Not included (explicit non-goal upstream) | **Included, human-review required before submit** |
+If you've never used a terminal before, follow this section literally — copy each command, paste it, press Enter.
 
----
+## Step 1 — Install Ollama
 
-## Quick start
+Ollama is the program that runs AI models on your computer.
+
+**On Mac:**
+```bash
+brew install ollama
+```
+*Don't have `brew`? Install it first from [brew.sh](https://brew.sh).*
+
+**On Linux:**
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+**On Windows:** download the installer from [ollama.com/download](https://ollama.com/download).
+
+## Step 2 — Start Ollama
+
+Ollama needs to be running in the background.
+
+**Mac:**
+```bash
+brew services start ollama
+```
+
+**Linux/Windows:**
+```bash
+ollama serve
+```
+*This blocks the terminal. Open a second terminal window for the next steps.*
+
+## Step 3 — Download an AI model
+
+This downloads the model to your laptop. Big download — 5 to 20 GB depending on which one. Only do this once.
+
+**If your computer has 16 GB RAM** (most laptops):
+```bash
+ollama pull qwen2.5:14b
+```
+
+**If your computer has 32 GB RAM or more** (M-series Macs with 32+ GB):
+```bash
+ollama pull qwen2.5:32b
+```
+
+**If unsure or short on space:**
+```bash
+ollama pull llama3.1:8b
+```
+
+## Step 4 — Download this project
 
 ```bash
-# 1. Install Ollama
-# macOS:   brew install ollama
-# Linux:   curl -fsSL https://ollama.com/install.sh | sh
-# Windows: https://ollama.com/download
-
-# 2. Start the Ollama server (runs on :11434)
-brew services start ollama          # macOS — runs as a service
-# or: ollama serve                  # any OS — blocks the terminal
-
-# 3. Pull a model (see "Choosing a model" below)
-ollama pull qwen2.5:14b
-
-# 4. Install this project
+cd ~/Downloads
+git clone https://github.com/RachaRajesh/career-ops-ollama.git
 cd career-ops-ollama
+```
+
+## Step 5 — Install the project's dependencies
+
+```bash
 npm install
 npx playwright install chromium
+```
 
-# 5. Configure
-cp .env.example .env                           # edit: set OLLAMA_MODEL
+*You need Node.js 18 or newer. Check with `node --version`. If you don't have it, install from [nodejs.org](https://nodejs.org).*
+
+## Step 6 — Set up your config files
+
+Copy the templates:
+```bash
+cp .env.example .env
 cp config/profile.example.yml config/profile.yml
-cp examples/cv.example.md cv.md                # ⚠ see "The CV file gotcha" below
+cp examples/cv.example.md cv.md
+```
 
-# 6. Launch the interactive menu
+Now you need to edit each one with YOUR information. Use any text editor — `nano`, `vim`, VS Code, TextEdit, whatever you're comfortable with. Examples below use `nano` because it's beginner-friendly.
+
+### Edit `.env`
+
+```bash
+nano .env
+```
+
+Find the line that says `OLLAMA_MODEL=qwen2.5:14b`. Change it to whatever model you downloaded in Step 3.
+
+Save: `Ctrl+O`, Enter, `Ctrl+X`.
+
+### Edit `cv.md` ⚠️ IMPORTANT
+
+```bash
+nano cv.md
+```
+
+This file currently contains a fake person named "Jane Doe". **You MUST replace it with your real resume.** If you skip this, every PDF you generate will have Jane Doe's information instead of yours.
+
+Delete everything in the file. Paste your real resume in markdown format. Use the example as a structure guide.
+
+Verify after saving:
+```bash
+head -3 cv.md
+```
+The first line should be **your name**, not "Jane Doe".
+
+### Edit `config/profile.yml`
+
+```bash
+nano config/profile.yml
+```
+
+Fill in your real information — especially:
+- `name`, `email`, `phone`, `location`, `linkedin`, `github`
+- `work_authorization` section (be honest — this ends up on real applications)
+- `target_base_usd` if you're comfortable having the auto-apply fill salary fields
+
+## Step 7 — Verify everything works
+
+```bash
+npm run doctor
+```
+
+You should see green checkmarks for everything:
+```
+✓ ollama server reachable
+✓ Model "qwen2.5:14b" available
+✓ cv.md exists
+✓ config/profile.yml exists
+✓ modes/ directory populated
+✓ Playwright chromium installed
+✓ LLM round-trip works
+```
+
+If any line is **red**, the error message tells you exactly what to fix. The most common issues:
+- "Cannot reach Ollama" → run `brew services start ollama` (or `ollama serve`)
+- "Model not pulled" → run `ollama pull <name>` for whatever model is in your `.env`
+- "cv.md still contains Jane Doe" → go back to Step 6 and edit `cv.md` for real
+
+## Step 8 — Launch the menu
+
+```bash
 npm start
 ```
 
----
-
-## The menu
-
-`npm start` opens this:
+You'll see this:
 
 ```
   ╔══════════════════════════════════════════════╗
@@ -79,206 +177,186 @@ npm start
 
   What would you like to do?
 
-   [1]  Evaluate ONE job (single link)       Paste one URL, file, or JD text → scored report
-   [2]  Batch pipeline (MULTIPLE links)      Paste N URLs → filter by score → PDF + apply picks
-   [3]  Batch-evaluate a folder              Run every .txt/.md in ./jds through the evaluator
-   [4]  Scan job portals                     Crawl configured companies for new listings
-   [5]  Generate tailored PDF                Turn an existing report into an ATS-optimized CV
-   [6]  Auto-fill one application            Open browser, fill form, you review + submit
-   [7]  View tracker (your pipeline)         Pretty-print every job you've evaluated
-   [8]  Run setup check (doctor)             Verify everything is configured
-   [9]  Help — what does this do?            Quick intro for first-time users
+   [1]  Evaluate ONE job (single link)       Paste one URL, file, or JD text
+   [2]  Batch pipeline (MULTIPLE links)      Paste N URLs → filter → PDF + apply
+   [3]  Batch-evaluate a folder              Run every .txt/.md in ./jds
+   [4]  Scan job portals                     Crawl configured companies
+   [5]  Generate tailored PDF(s)             Single → PDF, or bulk for many
+   [6]  Auto-fill one application            Open browser, fill form
+   [7]  View tracker (your pipeline)         See every job you've evaluated
+   [8]  Run setup check (doctor)             Verify everything works
+   [9]  Help — what does this do?            Quick intro
    [q]  Quit
 ```
 
-Pick a number, answer the prompts, done.
+Type a number, press Enter, follow the prompts. **You're done with setup.**
 
 ---
 
-## Option 1 vs Option 2 — which to use when
+# 📋 Common workflows
 
-**Option 1 — single link**: You have one specific job you want to evaluate. Paste the URL, get a report, optionally generate a PDF separately from option 5.
-
-**Option 2 — batch pipeline**: You have a list of jobs and want to triage them:
+## "I have one job I want to evaluate"
 
 ```
-1. Paste N URLs (one per line, empty line when done)
+npm start
+→ press 1
+→ press 1 (paste URL)
+→ paste the job URL
+→ wait 1-3 minutes
+```
 
-2. Add any notes (e.g. "skip Meta, I already applied")
+You get a score (1-5), strengths, gaps, and a recommendation. The report saves to `reports/`.
 
-3. STAGE 1 — Script evaluates all N jobs, shows a scoreboard:
+## "I have 5 jobs from LinkedIn — which should I apply to?"
 
-      #   Company       Role                           Score  Verdict
-      ─── ───────────── ──────────────────────────────  ─────  ───────
-       1  Anthropic     Applied AI Engineer             4.7    strong
-       2  Retool        Senior ML Platform Engineer     4.3    apply
-       3  Langfuse      Founding Engineer (AI)          4.1    apply
-       4  Gong          Senior Data Scientist           3.6    maybe
-       5  Meta          ML Infra (L5)                   2.8    skip
+```
+npm start
+→ press 2  (batch pipeline)
+→ paste each URL on its own line
+→ press Enter on an empty line when done
+→ wait — script evaluates all 5
+→ see scoreboard
+→ pick which to take forward (e.g. "all scoring 4.0+")
+→ for each: PDF gets generated, then app form opens for you to fill
+```
 
-4. STAGE 2 — You pick which ones to take forward:
-      [a] All of them
-      [t] Top scorers only (≥ 4.0)     ← typical choice
-      [p] Premium scorers only (≥ 4.5)
-      [m] Manual pick — I give row numbers like "1,3" or "1-3"
+## "I evaluated 12 jobs, now I want PDFs for the good ones"
 
-5. STAGE 3 — For each picked job:
-      → Gap analysis        (flags JD requirements not in your CV)
-      → Continue?            (c = proceed, s = skip this job, q = quit)
-      → Tailored PDF
-      → Continue?
-      → Auto-fill application (new browser window per job)
-      → Continue?
-      → next job
+```
+npm start
+→ press 5  (PDF generation)
+→ press 3  (reports scoring ≥ 4.0)
+→ confirm
+```
+
+PDFs land in `output/`, named like `Anthropic_AI-Engineer_2026-04-23_19-45.pdf`.
+
+## "I want to auto-fill an application form"
+
+⚠️ Read `docs/AUTO_APPLY.md` first. The script never clicks submit — you do. Don't use it on LinkedIn (they detect automation and suspend accounts).
+
+```
+npm start
+→ press 6
+→ paste the application URL (the actual form, not the job listing)
+→ confirm your profile is honest
+→ browser opens, fills the form
+→ YOU review and click submit
 ```
 
 ---
 
-## Choosing a model
+# 🛠 Picking the right AI model
 
-For this task (JD evaluation, resume tailoring, form-filling — all structured-output work):
+Your computer's RAM decides what's possible. Quality goes up with model size; speed goes down.
 
-| Model | Memory | Best for |
-|---|---|---|
-| `qwen2.5:32b` | ~20 GB | M2 Pro / M3 Max / M4 Pro with 32GB+ RAM. Best quality. |
-| `qwen2.5:14b` | ~9 GB | The sweet spot — great JSON reliability, fast enough on most Macs |
-| `qwen2.5:7b` | ~5 GB | 16GB RAM machines, still decent |
-| `llama3.1:8b` | ~5 GB | Fallback if Qwen doesn't work for you |
-| `deepseek-r1:14b` | ~9 GB | Reasoning-strong but chain-of-thought can bloat JSON |
+| Model | RAM needed | Speed | Quality |
+|---|---|---|---|
+| `qwen2.5:7b` | ~5 GB | Fast | OK |
+| `qwen2.5:14b` | ~9 GB | Medium | **Recommended for most users** |
+| `qwen2.5:32b` | ~20 GB | Slower | Best for resume tailoring quality |
+| `llama3.1:8b` | ~5 GB | Fast | OK fallback |
 
-**Skip:** uncensored/heretic fine-tunes. They regress on JSON formatting, which this pipeline depends on heavily.
+**Skip:** "uncensored" or "heretic" fine-tunes. They produce worse JSON formatting, which this project depends on.
 
-Set your choice in `.env`:
-
+To switch models later:
 ```bash
-OLLAMA_MODEL=qwen2.5:14b
-OLLAMA_NUM_CTX=32768          # lets the model hold full CV + JD + profile
-OLLAMA_TIMEOUT_MS=300000      # 5 min — generous for big models
+ollama pull qwen2.5:32b           # download
+nano .env                         # change OLLAMA_MODEL=qwen2.5:32b
+npm run doctor                    # verify
 ```
 
 ---
 
-## LLM providers — Ollama (default) or openclaude (optional)
+# 📂 Where files go
 
-Career-ops supports two LLM backends:
-
-**`LLM_PROVIDER=ollama`** (default) — talks directly to your local Ollama server. Reliable, fast, what this project was built around. Recommended unless you have a specific reason to switch.
-
-**`LLM_PROVIDER=openclaude`** (optional) — routes through [openclaude's](https://github.com/Gitlawb/openclaude) OpenAI-compatible API. Useful if you're already using openclaude for other workflows and want unified provider routing across Ollama, OpenAI, DeepSeek, Gemini, and 200+ others.
-
-Switching is one env var change. Full setup guide in [docs/OPENCLAUDE.md](docs/OPENCLAUDE.md). Honest tradeoffs covered there — openclaude has open bugs around tool-calling with local Ollama that don't affect career-ops' current flows but are worth knowing about.
-
-You can also mix per-command:
-
-```bash
-LLM_PROVIDER=openclaude npm run evaluate -- --url https://...
-LLM_PROVIDER=ollama     npm run apply    -- --url https://...
+```
+career-ops-ollama/
+├── cv.md                    ← YOUR RESUME (you create this)
+├── .env                     ← YOUR CONFIG (you create this)
+├── config/profile.yml       ← YOUR DETAILS (you create this)
+│
+├── reports/                 ← Evaluation reports land here
+│                             Format: Company_Role_Date_Time.md
+├── output/                  ← Tailored PDFs land here
+│                             Format: Company_Role_Date_Time.pdf
+├── data/tracker.tsv         ← Master list of every job evaluated
+│
+├── jds/                     ← Drop saved job descriptions here for batch
+└── scripts/                 ← The actual code (don't edit unless you want to)
 ```
 
 ---
 
-## The CV file gotcha — READ THIS
+# 🔧 Common problems
 
-The #1 first-run bug is the **Jane Doe bug** — your tailored PDFs come out with Jane Doe's info instead of yours.
-
-The project reads your resume from a file named **`cv.md`** — not `cv.example.md`, not `resume.md`. Exactly `cv.md` in the project root.
-
-```bash
-# copy the template
-cp examples/cv.example.md cv.md
-
-# open cv.md and replace EVERYTHING with your real resume
-nano cv.md          # or: code cv.md, vim cv.md, open -a TextEdit cv.md
-
-# verify — the first line should be YOUR name, not "Jane Doe":
-head -3 cv.md
-```
-
-The menu's setup status will show a red warning if it detects the Jane Doe example is still there, but it's better to fix it now.
+| Problem | Fix |
+|---|---|
+| "Cannot reach Ollama" | Run `brew services start ollama` (Mac) or `ollama serve` |
+| "Model not pulled" | Run `ollama pull <name>` for the model in `.env` |
+| Generated PDF has Jane Doe's info | Edit `cv.md` to your real content. `head -3 cv.md` should show YOUR name |
+| Workday URL fails to scrape | Workday blocks scrapers. Use option 1 → "Paste the JD text" instead |
+| Evaluation timed out | Edit `.env`, set `OLLAMA_TIMEOUT_MS=600000` (10 min for big models) |
+| Resume looks AI-generated | Bump to `qwen2.5:32b` if you have 32GB+ RAM. Smaller models keyword-stuff more. |
+| `npm doctor` fails (not `npm run doctor`) | You typed it wrong. The right command is **`npm run doctor`** |
+| Apply form fills wrong info | Check `config/profile.yml` — the script uses what you put there literally |
 
 ---
 
-## Commands (if you prefer the terminal directly)
+# 📚 More documentation
 
-```bash
-npm start                               # interactive menu (recommended)
-npm run doctor                          # environment checks
-npm run evaluate -- "JD text..."        # evaluate one job (paste JD)
-npm run evaluate -- --file path/to.txt  # evaluate one job (from file)
-npm run evaluate -- --url https://...   # evaluate one job (scrape URL)
-npm run pdf -- --report reports/X.md    # generate ATS PDF from a report
-npm run scan                            # scan configured portals
-npm run batch -- --dir ./jds            # batch-evaluate every file in a dir
-npm run tracker                         # print the tracker TSV
-npm run apply -- --url https://...      # auto-fill form, pause for review
-node scripts/pipeline.mjs               # multi-link pipeline (same as menu option 2)
-```
+- `docs/SETUP.md` — detailed setup walkthrough
+- `docs/AUTO_APPLY.md` — auto-apply safety model (read before using option 6)
+- `docs/ARCHITECTURE.md` — how the pieces fit together
+- `docs/OPENCLAUDE.md` — using openclaude as the AI provider (advanced, optional)
 
 ---
 
-## Configuration
+# 🤖 About auto-tailoring (the resume PDFs)
 
-All knobs live in `.env`. The important ones:
+The PDF generator does these things:
+- Rewords your existing bullets to surface JD-relevant keywords
+- Reorders bullets so the most relevant ones appear first
+- Promotes skills to the Skills section if your CV implies them
+- Picks a clean, ATS-friendly layout
 
-```bash
-LLM_PROVIDER=ollama                  # or "openclaude" — see docs/OPENCLAUDE.md
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:14b
-OLLAMA_TIMEOUT_MS=300000
-OLLAMA_TEMPERATURE=0.3
-OLLAMA_NUM_CTX=32768
-AUTO_APPLY_HEADLESS=false            # keep false so you can watch the browser
-AUTO_APPLY_REQUIRE_CONFIRM=true      # script never clicks submit regardless
-```
+The PDF generator **does NOT**:
+- Add experience or technologies you don't have
+- Inflate years, team sizes, or impact metrics
+- Mention tech in a job's bullets if your CV doesn't say you used it there
+  - Example: if your CV says you used SageMaker at UnitedHealth (not "AWS" broadly), the tailored resume won't add "AWS" to the UnitedHealth bullets just because the JD asked for it
+- Aim for 100% keyword match — that's an AI-detection red flag. Targets ~70%.
 
-See `.env.example` for the full list with comments.
+**Why it stays honest**: resume fraud fails background checks, gets offers rescinded, and on F-1 OPT / STEM OPT can jeopardize your visa. The tool is built to be a leg up, not a liability.
 
----
-
-## Auto-apply: how it actually works
-
-1. You run the pipeline (option 2) or option 6
-2. Playwright opens the page in a **visible** browser window (new window per job in batch mode)
-3. The script walks the form DOM, extracts every field + label
-4. Your local LLM proposes answers for each field, drawing on `cv.md` and `config/profile.yml`
-5. The script fills the fields (you can watch it happen)
-6. **The script stops.** It prints a summary of what it filled, flags anything it was unsure about (salary, work authorization, EEO questions), and waits for you.
-7. You review, fix anything wrong, then **you click Submit** yourself.
-
-The script will never click Submit on your behalf. This is hard-coded.
-
-See `docs/AUTO_APPLY.md` for the full safety model.
-
-### A note on "add points in resume if I don't have it"
-
-The PDF generator rewords, reorders, and surfaces what's already in your CV. It does **not** invent experience you don't have. Instead, the pipeline runs a **gap analysis** step that flags JD requirements your CV doesn't clearly show, labeled `probably have it` / `learnable` / `real gap`. You decide what's real for you and update `cv.md` manually.
-
-Why not auto-fabricate: resume fraud fails background checks, gets offers rescinded, and on F-1 OPT / STEM OPT can jeopardize your visa. The tool stays honest by design.
+If you want to add an experience that's genuinely yours but isn't on your CV yet, edit `cv.md` directly — the tool will pick it up next run.
 
 ---
 
-## Legal / ToS caveats
+# ⚖️ Legal stuff
 
-- Most major ATS platforms (Greenhouse, Lever, Workday, LinkedIn) prohibit **fully automated submission**. Human-reviewed auto-fill is grayer — you're the one submitting — but treat this as "use at your own risk."
-- Don't batch-submit. Don't spray-and-pray. The filter is the point.
-- **Don't point this at LinkedIn.** LinkedIn actively detects automation and will suspend accounts.
-- The evaluation pipeline strongly recommends skipping anything scoring below 4.0 / 5.
-
----
-
-## Docs index
-
-- [`docs/SETUP.md`](docs/SETUP.md) — step-by-step install
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the pieces fit together
-- [`docs/AUTO_APPLY.md`](docs/AUTO_APPLY.md) — the auto-apply safety model in detail
-- [`docs/OPENCLAUDE.md`](docs/OPENCLAUDE.md) — using openclaude as the LLM provider
+- Greenhouse, Lever, Workday, LinkedIn etc. **prohibit fully automated submission.** Human-reviewed auto-fill (what this does) is grayer — but use it carefully.
+- **Don't point this at LinkedIn.** They detect automation and suspend accounts.
+- **Don't spray-and-pray.** The whole point is filtering. The tool tells you to skip jobs scoring below 4.0; listen to it.
+- Your `cv.md`, `profile.yml`, and `.env` stay on your computer. The only outbound traffic is the LLM call to your local Ollama (no internet) and Playwright opening application websites in a browser.
 
 ---
 
-## Credits
+# 🙏 Credits
 
-- **[santifer/career-ops](https://github.com/santifer/career-ops)** — Santiago Fernández's original project. The evaluation framework, 6-block rubric, PDF template design, mode prompts, and Go dashboard are his. Go star it.
-- **[Gitlawb/openclaude](https://github.com/Gitlawb/openclaude)** — optional LLM provider.
-- This fork — LLM backend swap, provider-switching dispatcher, interactive menu, multi-link pipeline, gap analyzer, auto-apply helper.
+- **[santifer/career-ops](https://github.com/santifer/career-ops)** — original project. The evaluation rubric, mode prompts, and architecture are Santiago's work. Star it.
+- **[Gitlawb/openclaude](https://github.com/Gitlawb/openclaude)** — optional LLM router.
+- This fork — Ollama backend, interactive menu, multi-link pipeline, gap analyzer, auto-apply, organic resume tailoring, bulk PDF generation.
 
-MIT License, same as upstream.
+MIT License (inherited from upstream).
+
+---
+
+# 💬 Found a bug?
+
+Open an issue on this fork's GitHub repo. Include:
+- What you ran
+- The full error message (paste, don't paraphrase)
+- Output of `npm run doctor`
+
+That's enough to debug 95% of issues.
