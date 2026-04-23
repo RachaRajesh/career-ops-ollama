@@ -158,14 +158,20 @@ async function extractUrls(filePath) {
   const pattern = /https?:\/\/[^\s"',<>()]+/g;
 
   if (ext === '.csv' || ext === '.txt' || ext === '.tsv') {
-    const content = fs.readFileSync(filePath, 'utf8');
-    const matches = content.match(pattern) || [];
+    // Skip the first line — commonly a title or column header
+    const lines = fs.readFileSync(filePath, 'utf8').split('\n');
+    const body = lines.slice(1).join('\n');
+    const matches = body.match(pattern) || [];
     matches.forEach((u) => urls.add(cleanUrl(u)));
   } else if (ext === '.xlsx' || ext === '.xlsm') {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(filePath);
     wb.eachSheet((sheet) => {
-      sheet.eachRow((rowObj) => {
+      // eachRow's callback receives rowNumber as the second arg.
+      // Skip row 1 because it's almost always a title or column header
+      // like "AI Engineer Date 4/23/2026 Part 1" — not a job URL.
+      sheet.eachRow((rowObj, rowNumber) => {
+        if (rowNumber === 1) return;
         rowObj.eachCell((cell) => {
           const text = cell.text || String(cell.value || '');
           // Also check the hyperlink property — Excel stores the URL separately
@@ -209,24 +215,57 @@ function runEvaluate(url, reportsDir) {
     child.stdout.on('data', (d) => { stdout += d.toString(); });
     child.stderr.on('data', (d) => { stderr += d.toString(); });
     child.on('close', (code) => {
+      // Strip ANSI color codes so regex matching is robust
+      const cleanStdout = stripAnsi(stdout);
       if (code !== 0) {
         return resolve({
           ok: false,
-          reason: extractFailureReason(stderr || stdout) || `exit ${code}`,
+          reason: extractFailureReason(stripAnsi(stderr) || cleanStdout) || `exit ${code}`,
         });
       }
-      // Parse the report path and summary info from stdout
-      const reportMatch = stdout.match(/✓ report: (\S+)/);
-      const companyMatch = stdout.match(/company:\s+(.+)/);
-      const roleMatch = stdout.match(/role:\s+(.+)/);
-      const scoreMatch = stdout.match(/Score:\s+([\d.]+)\/5/);
+      // Parse the report path from stdout.
+      // NOTE: use [^\n]+ not \S+ because file paths CAN contain spaces
+      // (e.g. output folder "Ai Engineer 1_2026-04-23_22-10" has a space).
+      const reportMatch = cleanStdout.match(/✓ report:\s+([^\n]+?)\s*$/m);
+      const reportPath  = reportMatch ? reportMatch[1].trim() : '';
+
+      // Read company/role/score FROM THE REPORT FILE itself — much more
+      // reliable than parsing them from stdout, and it handles the case
+      // where evaluate.mjs fell back to "unknown" metadata.
+      let company = '', role = '', score = '';
+      if (reportPath && fs.existsSync(reportPath)) {
+        try {
+          const head = fs.readFileSync(reportPath, 'utf8').slice(0, 2000);
+          // Report format: first line "# Company — Role"
+          const h = head.match(/^# (.+?) — (.+)$/m);
+          if (h) { company = h[1].trim(); role = h[2].trim(); }
+          // Score: "**Score:** 4.2 / 5"
+          const s = head.match(/\*\*Score:\*\*\s*([\d.]+)/);
+          if (s) score = s[1];
+        } catch { /* fall through to stdout parse */ }
+      }
+
+      // Fallback to stdout patterns if the report read didn't yield values
+      if (!company) {
+        const m = cleanStdout.match(/company:\s+(.+)/);
+        if (m) company = m[1].trim();
+      }
+      if (!role) {
+        const m = cleanStdout.match(/role:\s+(.+)/);
+        if (m) role = m[1].trim();
+      }
+      if (!score) {
+        const m = cleanStdout.match(/Score:\s+([\d.]+)\/5/);
+        if (m) score = m[1];
+      }
+
       resolve({
-        ok: !!reportMatch,
-        reportPath: reportMatch ? reportMatch[1].trim() : '',
-        company: companyMatch ? companyMatch[1].trim() : '',
-        role: roleMatch ? roleMatch[1].trim() : '',
-        score: scoreMatch ? scoreMatch[1] : '',
-        reason: !reportMatch ? 'no report path in output' : '',
+        ok: !!reportPath,
+        reportPath,
+        company,
+        role,
+        score,
+        reason: !reportPath ? 'no report path in output' : '',
       });
     });
   });
@@ -248,13 +287,15 @@ function runPdf(reportPath, outputDir) {
     child.stdout.on('data', (d) => { stdout += d.toString(); });
     child.stderr.on('data', (d) => { stderr += d.toString(); });
     child.on('close', (code) => {
+      const cleanStdout = stripAnsi(stdout);
       if (code !== 0) {
         return resolve({
           ok: false,
-          reason: extractFailureReason(stderr || stdout) || `exit ${code}`,
+          reason: extractFailureReason(stripAnsi(stderr) || cleanStdout) || `exit ${code}`,
         });
       }
-      const pdfMatch = stdout.match(/✓ PDF:\s+(\S+)/);
+      // Use [^\n]+ to capture paths that contain spaces
+      const pdfMatch = cleanStdout.match(/✓ PDF:\s+([^\n]+?)\s*$/m);
       resolve({
         ok: !!pdfMatch,
         pdfPath: pdfMatch ? pdfMatch[1].trim() : '',
@@ -266,6 +307,16 @@ function runPdf(reportPath, outputDir) {
 
 // ---------------------------------------------------------------------------
 // Helpers
+
+/**
+ * Strip ANSI color escape sequences. evaluate.mjs and generate-pdf.mjs emit
+ * colored output (✓ report: in green, etc.) — those escape codes pollute
+ * our regex capture groups if we don't remove them first.
+ */
+function stripAnsi(text) {
+  // \x1b is ESC; the common patterns are \x1b[NNm for colors and \x1b[0m to reset
+  return String(text || '').replace(/\x1b\[[0-9;]*m/g, '');
+}
 
 function extractFailureReason(text) {
   if (!text) return '';
