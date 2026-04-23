@@ -95,6 +95,7 @@ const MAIN_MENU = [
   { key: '4', label: 'Scan job portals',                   desc: 'Crawl configured companies for new listings',           run: scanFlow },
   { key: '5', label: 'Generate tailored PDF(s)',           desc: 'Single report → PDF, or bulk-generate for many reports', run: pdfFlow },
   { key: '6', label: 'Auto-fill one application',          desc: 'Open browser, fill form, you review + submit',          run: applyOneFlow },
+  { key: 'e', label: 'Process Excel/CSV of URLs',           desc: 'Batch-evaluate + PDF every URL in a spreadsheet',       run: excelFlow },
   { key: '7', label: 'View tracker (your pipeline)',       desc: 'Pretty-print every job you\'ve evaluated',              run: trackerFlow },
   { key: '8', label: 'Run setup check (doctor)',           desc: 'Verify Ollama is running and everything configured',    run: doctorFlow },
   { key: '9', label: 'Help — what does this do?',          desc: 'Quick intro for first-time users',                      run: helpFlow },
@@ -278,6 +279,34 @@ async function applyOneFlow() {
   const ok = (await ask(c.bold('  Profile is filled honestly (esp. work_authorization)? [y/N] › '))).toLowerCase();
   if (ok !== 'y') { console.log(c.yellow('  → Fix config/profile.yml first.')); return pause(); }
   await run('scripts/apply.mjs', ['--url', url]);
+  await pause();
+}
+
+async function excelFlow() {
+  clear(); banner();
+  console.log(c.bold('  📑 Process Excel/CSV of URLs')); hr();
+  console.log(c.dim('  Point the script at a spreadsheet file with job URLs.'));
+  console.log(c.dim('  The script will evaluate every URL and generate a tailored PDF'));
+  console.log(c.dim('  for each one, all in a single timestamped output folder.'));
+  console.log('');
+  console.log(c.dim('  Supported: .xlsx, .xlsm, .csv, .tsv, .txt'));
+  console.log(c.dim('  URLs can be in any column — the script finds them automatically.'));
+  console.log('');
+  console.log(c.yellow('  ⚠ Heads-up:'));
+  console.log(c.dim('    • Workday / SuccessFactors / Oracle Cloud URLs often fail to scrape.'));
+  console.log(c.dim('      They\'ll show up in summary.csv with "eval_failed" — retry manually.'));
+  console.log(c.dim('    • Each URL takes ~1-3 min to process on qwen2.5:14b.'));
+  console.log(c.dim('      For 25 URLs, expect 30-60 min total.'));
+  console.log('');
+  const file = await ask(c.bold('  Path to Excel/CSV file (blank to cancel) › '));
+  if (!file) return;
+  if (!fs.existsSync(file)) {
+    console.log(c.red(`  File not found: ${file}`));
+    return pause();
+  }
+  const go = (await ask(c.bold('  Proceed? [Y/n] › '))).toLowerCase();
+  if (go === 'n') return;
+  await run('scripts/process-excel.mjs', ['--file', file]);
   await pause();
 }
 
