@@ -17,7 +17,8 @@
     "scan": "node scripts/scan.mjs",
     "batch": "node scripts/batch.mjs",
     "tracker": "node scripts/tracker.mjs",
-    "apply": "node scripts/apply.mjs"
+    "apply": "node scripts/apply.mjs",
+    "bulk-apply": "node scripts/bulk-apply.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
