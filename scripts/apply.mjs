@@ -82,14 +82,22 @@ async function main() {
     else console.log(c.dim('  no cookie banner found'));
 
     // STEP 2: If we're on a job landing page, click "Apply Now" to reveal the form
-    console.log(c.cyan('→ checking for Apply Now button'));
-    const clickedApply = await clickApplyNow(page);
-    if (clickedApply) {
-      console.log(c.dim('  clicked Apply Now — waiting for form'));
-      await page.waitForTimeout(3000);
+    console.log(c.cyan('→ navigating to application form'));
+    const applyResult = await clickApplyNow(page);
+    if (applyResult === 'clicked') {
+      console.log(c.dim('  walked through Apply Now flow — waiting for form'));
+      await page.waitForTimeout(2000);
+    } else if (applyResult === 'already-on-form') {
+      console.log(c.dim('  already on a form page'));
     } else {
-      console.log(c.dim('  already on a form page (no Apply Now needed)'));
+      console.log(c.yellow('  ⚠ Apply button not found — the page may require manual navigation'));
     }
+
+    // Dismiss any SECOND dialog that appeared after clicking Apply Now
+    // (e.g. JPMC's "IMPORTANT NOTICE" modal appears post-click, not at load)
+    console.log(c.cyan('→ dismissing post-apply dialogs (if any)'));
+    const secondPassDismissed = await dismissCookieBanner(page);
+    if (secondPassDismissed) console.log(c.dim('  dismissed additional dialog'));
 
     // STEP 3: Detect sign-in / sign-up gate
     if (APPLY_EMAIL && APPLY_PASSWORD) {
@@ -160,45 +168,62 @@ main();
 // ===========================================================================
 
 /**
- * Looks for a visible cookie-consent banner and clicks "Accept All" or similar.
- * Returns true if a banner was dismissed, false if none was found.
+ * Dismisses cookie banners AND any generic popup/overlay dialogs that
+ * cover form fields — e.g. "IMPORTANT NOTICE" boxes on Oracle Cloud,
+ * GDPR modals on SAP SuccessFactors, notices on Workday.
  *
- * Strategy: look for buttons matching a list of common cookie-accept phrases.
- * Works across most major ATS platforms (OneTrust, Didomi, TrustArc, Cookiebot)
- * which all use similar button text.
+ * Called multiple times during the flow because some sites show a SECOND
+ * dialog after the first is dismissed (or after the user interacts with
+ * the page).
+ *
+ * Returns true if any dialog was dismissed, false if none was found.
  */
 async function dismissCookieBanner(page) {
   const selectors = [
-    // Button text patterns, most specific first
+    // Cookie-specific patterns (most specific)
     'button:has-text("Accept All Cookies")',
     'button:has-text("Accept all cookies")',
     'button:has-text("Accept All")',
     'button:has-text("Accept all")',
+    // OneTrust, Didomi, and other major consent vendors
+    '#onetrust-accept-btn-handler',
+    '#didomi-notice-agree-button',
+    '[data-testid="cookie-accept"]',
+    '[data-cy="cookie-accept"]',
+    // Generic "Accept" buttons — for "IMPORTANT NOTICE" style dialogs
+    // Ordered so cookie-specific ones are tried first above.
+    'button:has-text("ACCEPT")',
+    'button:has-text("Accept")',
     'button:has-text("I Accept")',
     'button:has-text("I agree")',
     'button:has-text("Agree")',
     'button:has-text("Got it")',
     'button:has-text("OK, got it")',
-    // OneTrust (very common on enterprise ATS)
-    '#onetrust-accept-btn-handler',
-    // Didomi
-    '#didomi-notice-agree-button',
-    // Generic data-testid patterns
-    '[data-testid="cookie-accept"]',
-    '[data-cy="cookie-accept"]',
+    'button:has-text("OK")',
+    'button:has-text("Continue")',
+    'button:has-text("Close")',
+    'button:has-text("Dismiss")',
   ];
 
-  for (const sel of selectors) {
-    try {
-      const btn = page.locator(sel).first();
-      if (await btn.isVisible({ timeout: 500 })) {
-        await btn.click({ timeout: 2000 });
-        await page.waitForTimeout(500);
-        return true;
-      }
-    } catch { /* try next */ }
+  let anyDismissed = false;
+  // Loop up to 3 times in case multiple dialogs stack
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let dismissedThisPass = false;
+    for (const sel of selectors) {
+      try {
+        const btn = page.locator(sel).first();
+        if (await btn.isVisible({ timeout: 300 })) {
+          await btn.click({ timeout: 2000 });
+          await page.waitForTimeout(500);
+          dismissedThisPass = true;
+          anyDismissed = true;
+          break; // restart scan — a new dialog may have appeared
+        }
+      } catch { /* try next */ }
+    }
+    if (!dismissedThisPass) break; // nothing dismissed this pass, we're done
   }
-  return false;
+  return anyDismissed;
 }
 
 // ===========================================================================
@@ -206,48 +231,82 @@ async function dismissCookieBanner(page) {
 // ===========================================================================
 
 /**
- * Detects a job-listing landing page and clicks "Apply Now" to reveal the form.
+ * Detects a job-listing landing page and walks the "Apply Now" chain
+ * until we reach a real application form.
  *
- * Heuristic: if the page has an "Apply" button AND no visible email/password
- * fields AND no visible textarea, we're probably on a landing page. Click apply.
- * If there are already form fields visible, we skip this step.
+ * Many ATS platforms have a multi-step flow:
+ *   - Page 1: Apply Now button → opens dropdown/modal
+ *   - Page 2: Apply Now button in the modal → goes to form
+ *   - Page 3: the actual form with email/password/textarea
  *
- * Returns true if we clicked Apply, false if the page already looked like a form.
+ * This function clicks Apply Now up to 3 times, dismissing any popups
+ * between clicks. Stops as soon as real form fields are detected.
+ *
+ * Returns: 'clicked' | 'already-on-form' | 'not-found'
  */
 async function clickApplyNow(page) {
-  // Already looks like a form? skip.
-  const hasFormFields = await page.evaluate(() => {
-    const emailOrPasswordVisible = Array.from(document.querySelectorAll('input'))
-      .some((el) => ['email', 'password'].includes(el.type) && el.offsetParent !== null);
-    const hasTextarea = Array.from(document.querySelectorAll('textarea'))
-      .some((el) => el.offsetParent !== null);
-    return emailOrPasswordVisible || hasTextarea;
-  });
-  if (hasFormFields) return false;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    // Check: are we already on a form? (email/password/textarea visible)
+    const hasFormFields = await page.evaluate(() => {
+      const emailOrPasswordVisible = Array.from(document.querySelectorAll('input'))
+        .some((el) => ['email', 'password'].includes(el.type) && el.offsetParent !== null);
+      const hasTextarea = Array.from(document.querySelectorAll('textarea'))
+        .some((el) => el.offsetParent !== null);
+      // Also check for heading "Enter your email" / "Sign in" which indicates
+      // we've landed on a form page even if inputs haven't rendered yet
+      const formHeading = /enter\s+your\s+email|sign\s+in|create\s+(an\s+)?account|apply\s+for/i.test(
+        document.body?.innerText?.slice(0, 3000) || ''
+      );
+      return emailOrPasswordVisible || hasTextarea || formHeading;
+    });
+    if (hasFormFields) {
+      return attempt === 0 ? 'already-on-form' : 'clicked';
+    }
 
-  const applySelectors = [
-    'button:has-text("Apply Now")',
-    'button:has-text("Apply now")',
-    'a:has-text("Apply Now")',
-    'a:has-text("Apply now")',
-    'button:has-text("Apply")',      // more generic, tried last
-    'a:has-text("Apply")',
-    '[data-testid="apply-button"]',
-    '[data-cy="apply-button"]',
-  ];
+    // Not on a form yet — look for an Apply button to click
+    const applySelectors = [
+      'button:has-text("Apply Now")',
+      'button:has-text("Apply now")',
+      'a:has-text("Apply Now")',
+      'a:has-text("Apply now")',
+      // Sometimes the button appears inside a "dropdown" that the first
+      // click opens — it may have a different label on round 2.
+      'button:has-text("Apply for this job")',
+      'a:has-text("Apply for this job")',
+      'button:has-text("Continue to apply")',
+      'button:has-text("Start application")',
+      // More generic, tried last
+      'button:has-text("Apply")',
+      'a:has-text("Apply")',
+      '[data-testid="apply-button"]',
+      '[data-cy="apply-button"]',
+    ];
 
-  for (const sel of applySelectors) {
-    try {
-      const btn = page.locator(sel).first();
-      if (await btn.isVisible({ timeout: 500 })) {
-        // Scroll into view so the click doesn't get intercepted
-        await btn.scrollIntoViewIfNeeded();
-        await btn.click({ timeout: 3000 });
-        return true;
-      }
-    } catch { /* try next */ }
+    let clicked = false;
+    for (const sel of applySelectors) {
+      try {
+        const btn = page.locator(sel).first();
+        if (await btn.isVisible({ timeout: 300 })) {
+          await btn.scrollIntoViewIfNeeded();
+          await btn.click({ timeout: 3000 });
+          clicked = true;
+          break;
+        }
+      } catch { /* try next */ }
+    }
+
+    if (!clicked) {
+      // No more Apply buttons to click. If we never clicked one at all,
+      // the page might just not have one; if we've clicked already,
+      // we're probably on a non-form page and should bail.
+      return attempt === 0 ? 'not-found' : 'clicked';
+    }
+
+    // Wait for navigation / modal to settle, then dismiss any new popup
+    await page.waitForTimeout(2500);
+    await dismissCookieBanner(page);
   }
-  return false;
+  return 'clicked';
 }
 
 // ===========================================================================
@@ -491,6 +550,17 @@ async function fillForm(page, fields, proposals) {
       continue;
     }
 
+    // Skip honeypot fields entirely — they're traps for bots
+    if (isHoneypot(field)) {
+      results.push({
+        label: field.label,
+        status: 'flagged',
+        value: '',
+        note: 'honeypot field — intentionally left blank',
+      });
+      continue;
+    }
+
     try {
       if (field.tag === 'select') {
         await page.selectOption(field.selector, { value: String(proposal.value) }).catch(async () => {
@@ -498,10 +568,46 @@ async function fillForm(page, fields, proposals) {
         });
       } else if (field.type === 'checkbox' || field.type === 'radio') {
         if (proposal.value === true || String(proposal.value).toLowerCase() === 'yes' || String(proposal.value).toLowerCase() === 'true') {
-          await page.check(field.selector);
+          // First attempt — standard check
+          try {
+            await page.check(field.selector, { timeout: 5000 });
+          } catch {
+            // Covered by dialog? Dismiss and retry
+            await dismissCookieBanner(page);
+            await page.waitForTimeout(500);
+            try {
+              await page.check(field.selector, { timeout: 5000 });
+            } catch {
+              // Last-ditch: click the label next to the checkbox (works when
+              // the input itself is hidden behind custom styling)
+              const labelClicked = await page.evaluate((sel) => {
+                const input = document.querySelector(sel);
+                if (!input) return false;
+                const wrap = input.closest('label');
+                if (wrap) { wrap.click(); return true; }
+                if (input.id) {
+                  const lbl = document.querySelector(`label[for="${input.id}"]`);
+                  if (lbl) { lbl.click(); return true; }
+                }
+                return false;
+              }, field.selector);
+              if (!labelClicked) throw new Error('checkbox could not be toggled');
+            }
+          }
         }
       } else {
-        await page.fill(field.selector, String(proposal.value), { timeout: 10000 });
+        // Text field — if fill times out, dismiss potential blocking dialog and retry
+        try {
+          await page.fill(field.selector, String(proposal.value), { timeout: 10000 });
+        } catch (err) {
+          if (err.message.includes('Timeout') || err.message.includes('not visible')) {
+            await dismissCookieBanner(page);
+            await page.waitForTimeout(500);
+            await page.fill(field.selector, String(proposal.value), { timeout: 10000 });
+          } else {
+            throw err;
+          }
+        }
       }
 
       results.push({
@@ -545,6 +651,20 @@ function csvLine(cells) {
     if (/["\n,]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
     return s;
   }).join(',');
+}
+
+/**
+ * Detects honeypot fields — hidden or suspiciously-named fields that bots
+ * fill and humans don't see. Filling them flags the submission as automated.
+ * Common names: "honeypot", "website", "url", "phone2", "confirm_email" when
+ * hidden, or labels that literally say "honeypot".
+ */
+function isHoneypot(field) {
+  const hay = [field.name, field.label].filter(Boolean).join(' ').toLowerCase();
+  if (/honeypot/i.test(hay)) return true;
+  // Fields with label explicitly saying "leave this blank" — some forms are helpful
+  if (/leave\s+(this\s+)?blank/i.test(hay)) return true;
+  return false;
 }
 
 function truncate(s, n) {
