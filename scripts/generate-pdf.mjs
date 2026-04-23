@@ -328,18 +328,74 @@ function stripProtocol(url) {
 }
 
 /**
- * Clean a role title:
- *  - Strip leading/trailing whitespace
- *  - Remove any parentheticals containing tech-list noise like "(Python, AWS)"
- *    that the LLM sometimes injects via metadata extraction
- *  - Collapse multiple spaces
+ * Normalize a JD role title to a short canonical form.
+ *
+ * Rules in priority order:
+ *   1. Strip ALL parentheticals anywhere (not just trailing) — kills "(.NET, Claude Code)"
+ *   2. Strip seniority prefixes (Sr./Senior/Staff/Principal/Lead/Junior/Jr./Associate)
+ *   3. Strip level suffixes (II, III, IV, L5, L6, etc.)
+ *   4. Strip trailing dashes/colons + descriptors ("- Healthcare GenAI", ": Backend")
+ *   5. Pattern-match to one of these canonical buckets:
+ *        - Software AI Engineer       (if "software" appears)
+ *        - GenAI Engineer             (if "genai" / "generative ai" appears)
+ *        - ML Engineer                (if "ml" / "machine learning" appears)
+ *        - Data Scientist             (if "data scientist" appears)
+ *        - AI Engineer                (DEFAULT for anything else AI-related)
+ *
+ * Examples:
+ *   "Software AI Engineer (Backend, .NET)"     → "Software AI Engineer"
+ *   "AI Engineer III - Healthcare GenAI"       → "AI Engineer"
+ *   "Senior Machine Learning Engineer"         → "ML Engineer"
+ *   "Sr. Staff GenAI Engineer (L6)"            → "GenAI Engineer"
+ *   "AI Infrastructure Engineer (Remote)"      → "AI Engineer"
+ *   "Data Scientist II"                        → "Data Scientist"
  */
 function cleanRoleTitle(s) {
-  return String(s || '')
+  let cleaned = String(s || '')
     .trim()
-    .replace(/\s*\([^)]*\)\s*$/, '')   // trailing "(...)" — usually tech list noise
+    // 1. Strip all parentheticals (anywhere, not just trailing)
+    .replace(/\s*\([^)]*\)\s*/g, ' ')
+    // 2. Strip square brackets too just in case
+    .replace(/\s*\[[^\]]*\]\s*/g, ' ')
+    // 3. Strip trailing " - description" or ": description"
+    .replace(/\s*[-–:]\s+[A-Z].*$/, '')
+    // 4. Strip seniority prefixes (case-insensitive)
+    .replace(/^(Senior|Sr\.?|Staff|Principal|Lead|Junior|Jr\.?|Associate)\s+/i, '')
+    // 5. Strip second-pass seniority (e.g. "Sr. Staff" → first removes Sr., then Staff)
+    .replace(/^(Senior|Sr\.?|Staff|Principal|Lead|Junior|Jr\.?|Associate)\s+/i, '')
+    // 6. Strip level suffixes — Roman numerals or L-numbers
+    .replace(/\s+(I{1,3}V?|IV|V|VI|L\d+|G\d+|E\d+|\d+)\s*$/, '')
+    // 7. Collapse whitespace
     .replace(/\s+/g, ' ')
-    .trim() || 'Engineer';
+    .trim();
+
+  // Now pattern-match to one of the canonical buckets.
+  const lower = cleaned.toLowerCase();
+
+  // Software AI Engineer — "software" in the title
+  if (/\bsoftware\b/.test(lower) && /\b(ai|ml|machine|gen)\b/.test(lower)) {
+    return 'Software AI Engineer';
+  }
+  // GenAI Engineer — "genai" or "generative ai"
+  if (/\b(genai|generative\s*ai)\b/.test(lower)) {
+    return 'GenAI Engineer';
+  }
+  // Data Scientist — explicit
+  if (/\bdata\s*scientist\b/.test(lower)) {
+    return 'Data Scientist';
+  }
+  // ML Engineer — "ml engineer", "machine learning engineer", etc.
+  if (/\b(ml|machine\s*learning)\b/.test(lower) && /\bengineer\b/.test(lower)) {
+    return 'ML Engineer';
+  }
+  // Default catch-all for anything mentioning AI/ML
+  if (/\b(ai|ml|machine|llm|nlp)\b/.test(lower)) {
+    return 'AI Engineer';
+  }
+
+  // Last resort: return the cleaned form as-is, capitalized.
+  // (Hits if the JD is for something non-AI like "Backend Engineer".)
+  return cleaned || 'Engineer';
 }
 
 /**
