@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{NAME}} — Resume</title>
+<style>
+  /* =========================================================================
+     resume.io-inspired template
+     - Two-column: left sidebar (contact, skills, education, certs)
+                   right column (summary, experience, projects)
+     - Single-page Letter sized; flows to multi-page if content is long
+     - System fonts only — no web fonts to avoid rendering surprises
+     - Designed for ATS-friendliness: real text, no images-as-text, no tables
+       for layout (uses CSS grid)
+     ========================================================================= */
+  @page {
+    size: Letter;
+    margin: 0;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: #1a1a1a;
+    font-size: 10pt;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    display: grid;
+    grid-template-columns: 2.4in 1fr;
+    min-height: 11in;
+  }
+
+  /* ─── Left sidebar ────────────────────────────────────────────────────── */
+  .sidebar {
+    background: #2c3e50;
+    color: #ecf0f1;
+    padding: 0.55in 0.3in 0.4in 0.3in;
+  }
+  .sidebar h1 {
+    margin: 0 0 0.04in 0;
+    font-size: 18pt;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.3px;
+  }
+  .sidebar .role {
+    font-size: 10pt;
+    color: #bdc3c7;
+    margin: 0 0 0.3in 0;
+    font-weight: 400;
+  }
+  .sidebar h2 {
+    font-size: 9.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: #ecf0f1;
+    margin: 0.28in 0 0.08in 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #4a6178;
+  }
+  .sidebar .contact-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 9pt;
+  }
+  .sidebar .contact-list li {
+    margin-bottom: 6px;
+    word-break: break-word;
+    color: #d5dbdf;
+  }
+  .sidebar .contact-list a { color: inherit; text-decoration: none; }
+  .sidebar .skill-group { margin-bottom: 0.12in; }
+  .sidebar .skill-group .label {
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ecf0f1;
+    margin-bottom: 2px;
+  }
+  .sidebar .skill-group .items {
+    font-size: 8.8pt;
+    color: #bdc3c7;
+    line-height: 1.4;
+  }
+  .sidebar .edu-block, .sidebar .cert-block {
+    margin-bottom: 0.14in;
+    font-size: 9pt;
+  }
+  .sidebar .edu-block .degree {
+    font-weight: 600;
+    color: #ecf0f1;
+    margin-bottom: 1px;
+  }
+  .sidebar .edu-block .school,
+  .sidebar .cert-block .issuer {
+    color: #bdc3c7;
+    font-size: 8.8pt;
+  }
+  .sidebar .cert-block .name {
+    font-weight: 600;
+    color: #ecf0f1;
+    font-size: 9pt;
+    line-height: 1.3;
+  }
+
+  /* ─── Right column ────────────────────────────────────────────────────── */
+  .main {
+    padding: 0.55in 0.45in 0.4in 0.4in;
+    background: #ffffff;
+  }
+  .main h2 {
+    font-size: 11pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #2c3e50;
+    margin: 0 0 0.08in 0;
+    padding-bottom: 4px;
+    border-bottom: 1.5px solid #2c3e50;
+  }
+  .main section { margin-bottom: 0.22in; }
+  .main section:last-child { margin-bottom: 0; }
+
+  .summary {
+    font-size: 9.8pt;
+    line-height: 1.5;
+    color: #333;
+    margin: 0;
+  }
+
+  .job, .project {
+    margin-bottom: 0.16in;
+    page-break-inside: avoid;
+  }
+  .job-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 2px;
+    gap: 0.15in;
+  }
+  .job-title-block { flex: 1; min-width: 0; }
+  .job-title {
+    font-size: 10.5pt;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin: 0;
+  }
+  .job-company {
+    font-size: 9.8pt;
+    color: #4a6178;
+    font-weight: 600;
+    margin: 1px 0 0 0;
+  }
+  .job-meta {
+    font-size: 8.8pt;
+    color: #7a8896;
+    text-align: right;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  .bullets {
+    margin: 4px 0 0 0;
+    padding-left: 16px;
+    font-size: 9.5pt;
+    line-height: 1.5;
+    color: #333;
+  }
+  .bullets li {
+    margin-bottom: 3px;
+  }
+  .bullets li::marker {
+    color: #2c3e50;
+  }
+
+  .project { margin-bottom: 0.13in; }
+  .project-name {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin: 0;
+  }
+  .project-link {
+    font-size: 8.5pt;
+    color: #4a6178;
+    margin: 1px 0 3px 0;
+    word-break: break-all;
+  }
+  .project-desc {
+    font-size: 9.3pt;
+    color: #333;
+    margin: 0;
+    line-height: 1.45;
+  }
+
+  /* Avoid awkward orphans/widows on multi-page resumes */
+  h2 { page-break-after: avoid; }
+  .job, .project, .edu-block, .cert-block { page-break-inside: avoid; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <aside class="sidebar">
+    <h1>{{NAME}}</h1>
+    <div class="role">{{ROLE_TARGET}}</div>
+
+    <h2>Contact</h2>
+    <ul class="contact-list">{{CONTACT_LIST}}</ul>
+
+    <h2>Skills</h2>
+    {{SKILLS_BLOCK}}
+
+    <h2>Education</h2>
+    {{EDUCATION_BLOCK}}
+
+    {{CERTS_SECTION}}
+  </aside>
+
+  <main class="main">
+    <section>
+      <h2>Professional Summary</h2>
+      <p class="summary">{{SUMMARY}}</p>
+    </section>
+
+    <section>
+      <h2>Experience</h2>
+      {{EXPERIENCE_BLOCK}}
+    </section>
+
+    {{PROJECTS_SECTION}}
+  </main>
+
+</div>
+</body>
+</html>
