@@ -13,7 +13,7 @@ import path from 'node:path';
 import 'dotenv/config';
 import { chat, chatJSON, getConfig, PROVIDER_NAME } from './lib/llm.mjs';
 import {
-  paths, c, parseArgs, readFileOr, readYaml, ensureDir, slug, timestamp, resolveJdSource,
+  paths, c, parseArgs, readFileOr, readYaml, ensureDir, slug, timestamp, jobFilename, resolveJdSource,
 } from './lib/util.mjs';
 
 const args = parseArgs();
@@ -57,7 +57,7 @@ async function main() {
 
   // 4. Persist ---------------------------------------------------------------
   ensureDir(paths.reports);
-  const reportName = `${timestamp()}-${slug(meta.company || 'unknown')}-${slug(meta.role || 'role')}.md`;
+  const reportName = `${jobFilename(meta.company, meta.role)}.md`;
   const reportPath = path.join(paths.reports, reportName);
   fs.writeFileSync(reportPath, formatReport({ meta, report, jd }));
   console.log(c.green(`✓ report: ${reportPath}`));

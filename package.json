@@ -13,6 +13,7 @@
     "doctor": "node scripts/doctor.mjs",
     "evaluate": "node scripts/evaluate.mjs",
     "pdf": "node scripts/generate-pdf.mjs",
+    "bulk-pdf": "node scripts/bulk-pdf.mjs",
     "scan": "node scripts/scan.mjs",
     "batch": "node scripts/batch.mjs",
     "tracker": "node scripts/tracker.mjs",

@@ -96,6 +96,28 @@ export function timestamp() {
 }
 
 /**
+ * Build a filename stem in the format: Company_Role_YYYY-MM-DD_HH-MM
+ * Used for reports, PDFs, HTML, JSON — keeps everything matching across files.
+ *
+ * @param {string} company
+ * @param {string} role
+ * @param {Date} [when]  - defaults to now
+ * @returns {string}     - e.g. "Anthropic_AI-Engineer_2026-04-23_19-45"
+ */
+export function jobFilename(company, role, when = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const date = `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}`;
+  const time = `${pad(when.getHours())}-${pad(when.getMinutes())}`;
+  // Keep readable case but slug for filesystem safety. We allow letters and numbers,
+  // collapse everything else into a single hyphen, and trim edges.
+  const safe = (s) => String(s || 'unknown')
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'unknown';
+  return `${safe(company)}_${safe(role)}_${date}_${time}`;
+}
+
+/**
  * Fetch a URL and return readable text. Uses Playwright if available so we can
  * handle JS-rendered pages (most ATS portals are SPAs now).
  */

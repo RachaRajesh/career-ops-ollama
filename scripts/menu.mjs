@@ -93,7 +93,7 @@ const MAIN_MENU = [
   { key: '2', label: 'Batch pipeline (MULTIPLE links)',    desc: 'Paste N URLs → filter by score → PDF + apply picks',    run: pipelineFlow },
   { key: '3', label: 'Batch-evaluate a folder',            desc: 'Run every .txt/.md in ./jds through the evaluator',     run: batchFolderFlow },
   { key: '4', label: 'Scan job portals',                   desc: 'Crawl configured companies for new listings',           run: scanFlow },
-  { key: '5', label: 'Generate tailored PDF',              desc: 'Turn an existing report into an ATS-optimized CV',      run: pdfFlow },
+  { key: '5', label: 'Generate tailored PDF(s)',           desc: 'Single report → PDF, or bulk-generate for many reports', run: pdfFlow },
   { key: '6', label: 'Auto-fill one application',          desc: 'Open browser, fill form, you review + submit',          run: applyOneFlow },
   { key: '7', label: 'View tracker (your pipeline)',       desc: 'Pretty-print every job you\'ve evaluated',              run: trackerFlow },
   { key: '8', label: 'Run setup check (doctor)',           desc: 'Verify Ollama is running and everything configured',    run: doctorFlow },
@@ -216,17 +216,51 @@ async function pdfFlow() {
   const reports = fs.readdirSync(reportsDir).filter((f) => f.endsWith('.md')).sort().reverse();
   if (reports.length === 0) { console.log(c.yellow('  No reports yet.')); return pause(); }
 
-  console.log(c.dim('  Pick a report (newest first):\n'));
-  const show = reports.slice(0, 15);
-  show.forEach((r, i) => console.log(`    ${c.cyan(`[${i + 1}]`)} ${r}`));
-  if (reports.length > 15) console.log(c.dim(`    (${reports.length - 15} older hidden)`));
+  console.log(c.dim(`  Found ${reports.length} report${reports.length === 1 ? '' : 's'} in ${reportsDir}/`));
   console.log('');
+  console.log(`    ${c.cyan('[1]')} One report — pick from a list`);
+  console.log(`    ${c.cyan('[2]')} ALL reports — bulk generate PDFs for everything`);
+  console.log(`    ${c.cyan('[3]')} Reports scoring ≥ 4.0 — only the good ones`);
+  console.log(`    ${c.cyan('[4]')} Reports scoring ≥ 4.5 — only the great ones`);
+  console.log(`    ${c.cyan('[b]')} Back`);
+  console.log('');
+  const choice = (await ask(c.bold('  How? › '))).toLowerCase();
 
-  const pick = await ask(c.bold('  Number › '));
-  const idx = parseInt(pick, 10) - 1;
-  if (isNaN(idx) || !show[idx]) { console.log(c.red('  Invalid.')); return pause(); }
-  await run('scripts/generate-pdf.mjs', ['--report', path.join(reportsDir, show[idx])]);
-  await pause();
+  if (choice === 'b' || choice === '') return;
+
+  // Single mode — pick one report from a numbered list
+  if (choice === '1') {
+    console.log('');
+    console.log(c.dim('  Pick a report (newest first):\n'));
+    const show = reports.slice(0, 15);
+    show.forEach((r, i) => console.log(`    ${c.cyan(`[${i + 1}]`)} ${r}`));
+    if (reports.length > 15) console.log(c.dim(`    (${reports.length - 15} older hidden)`));
+    console.log('');
+
+    const pick = await ask(c.bold('  Number › '));
+    const idx = parseInt(pick, 10) - 1;
+    if (isNaN(idx) || !show[idx]) { console.log(c.red('  Invalid.')); return pause(); }
+    await run('scripts/generate-pdf.mjs', ['--report', path.join(reportsDir, show[idx])]);
+    return pause();
+  }
+
+  // Bulk modes — call bulk-pdf.mjs with appropriate filters
+  let bulkArgs = [];
+  let label = 'all reports';
+  if (choice === '3') { bulkArgs = ['--min', '4.0']; label = 'reports ≥ 4.0'; }
+  else if (choice === '4') { bulkArgs = ['--min', '4.5']; label = 'reports ≥ 4.5'; }
+  else if (choice !== '2') { console.log(c.red('  Not valid.')); return pause(); }
+
+  console.log('');
+  console.log(c.yellow(`  ⚠ This will generate PDFs for ${label}.`));
+  console.log(c.dim('    Each PDF takes 30-90s on local Ollama (longer for big models).'));
+  console.log(c.dim('    For 10 reports on qwen2.5:14b, expect ~10 minutes.'));
+  console.log('');
+  const go = (await ask(c.bold('  Proceed? [Y/n] › '))).toLowerCase();
+  if (go === 'n') return;
+
+  await run('scripts/bulk-pdf.mjs', bulkArgs);
+  return pause();
 }
 
 async function applyOneFlow() {
