@@ -49,16 +49,54 @@ cp .env.example .env
 #    Create cv.md in the project root with your resume in markdown.
 #    See examples/cv.example.md for the expected shape.
 
-# 7. Test the pipeline end-to-end
-npm run doctor       # sanity checks — Ollama reachable, model available, etc.
-npm run evaluate -- --file ./jds/sample.txt
+# 7. Launch the interactive menu
+npm start
+
+#   (or run commands directly — see below)
 ```
+
+# 7. Launch the interactive menu — does everything from one screen
+npm start
+```
+
+That last command opens a menu like this:
+
+```
+  ╔══════════════════════════════════════════════╗
+  ║        CAREER-OPS · Ollama Edition           ║
+  ║        local-LLM job search toolkit          ║
+  ╚══════════════════════════════════════════════╝
+
+  Setup:
+    ✓ Ollama configured
+    ✓ Your CV (cv.md)
+    ✓ Profile
+    ✓ .env file
+    model: llama3.1:8b
+
+  What would you like to do?
+
+   [1]  Evaluate a job                   Paste a URL, file, or JD text → get a scored report
+   [2]  Batch-evaluate a folder          Run every .txt/.md in ./jds through the evaluator
+   [3]  Scan job portals                 Crawl configured companies for new listings
+   [4]  Generate tailored PDF            Turn an evaluation report into an ATS-optimized CV
+   [5]  Auto-fill an application         Opens browser, fills form, you review + submit
+   [6]  View tracker (your pipeline)     Pretty-print every job you've evaluated
+   [7]  Run setup check (doctor)         Verify Ollama is running and everything is configured
+   [8]  Help — what does this do?        Quick intro for first-time users
+   [q]  Quit
+
+  Enter a number (or q to quit) ›
+```
+
+Pick a number, answer its prompts, done. You never need to remember flags.
 
 ---
 
-## Commands
+## Commands (if you prefer the terminal directly)
 
-```
+```bash
+npm start                               # interactive menu (recommended)
 npm run doctor                          # environment checks
 npm run evaluate -- "JD text..."        # evaluate one job (paste JD)
 npm run evaluate -- --file path/to.txt  # evaluate one job (from file)

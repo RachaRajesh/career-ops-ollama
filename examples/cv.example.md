@@ -1,64 +1,116 @@
-# Example CV — copy this to cv.md in the project root and edit
+# CV -- Rajesh Racha
 
-# Jane Doe
-
-Cleveland, OH · jane@example.com · +1-555-555-5555
-[linkedin.com/in/janedoe](https://linkedin.com/in/janedoe) · [github.com/janedoe](https://github.com/janedoe)
+**Location:** Cleveland, OH, USA  
+**Email:** racharajeshai@gmail.com  
+**LinkedIn:** linkedin.com/in/rajesh-racha/  
+**GitHub:** https://github.com/racharajeshAI  
 
 ---
 
-## Summary
+## Professional Summary
 
-AI/ML engineer with 3+ years shipping production Gen AI systems. Comfortable
-across the stack from model fine-tuning (SFT, RLHF) to retrieval pipelines
-(RAG, hybrid search) to evaluation harnesses. Recent work: led an LLM eval
-framework that caught a regression before rollout to 40M users.
+GenAI Engineer with 5+ years of experience building and deploying production-grade AI systems across healthcare, finance, and hospitality. Specialized in Retrieval-Augmented Generation (RAG), LLM evaluation, and scalable ML pipelines. Proven ability to design end-to-end AI systems from data ingestion to real-time inference, with strong focus on performance, observability, and business impact.
 
-## Experience
+---
 
-### UnitedHealth Group — Gen AI Developer
-*2023 – Present · Cleveland, OH*
+## Work Experience
 
-- Built a RAG pipeline over 2M clinical documents using hybrid BM25 + dense
-  retrieval; improved precision@10 from 0.62 to 0.81.
-- Led the migration from GPT-3.5 to Claude 3.5 Sonnet for a customer-support
-  classifier; reduced error rate 34% at equivalent cost.
-- Designed eval harness with 1,200 golden-set questions and SHAP-based
-  explainability for flagged responses.
-- Mentored 2 junior engineers on LLM fundamentals and prompt engineering.
+### UnitedHealth Group -- Cleveland, OH  
+**Gen AI Developer**  
+Feb 2025 – Present  
 
-### Goldman Sachs — Software Engineer (Associate)
-*2021 – 2023 · New York, NY*
+- Built and deployed **production RAG pipelines** using LangChain, FAISS, Pinecone, and ChromaDB with GPT-4 and LLaMA2  
+- Designed **multi-step LLM workflows (agents, chains, memory)** for document Q&A, summarization, and conversational AI  
+- Led **prompt engineering efforts** improving response accuracy and grounding across enterprise applications  
+- Developed **NLP pipelines (BERT, SBERT, spaCy)** for semantic search, classification, and entity extraction  
+- Deployed models on **AWS SageMaker** with Docker and CI/CD pipelines via Jenkins  
+- Contributed to **LLM fine-tuning (DeepSpeed, SFT, RLHF)** and applied quantization for inference optimization  
+- Built scalable **data + inference pipelines** using PySpark, Kafka, and Databricks  
+- Integrated AI systems with **FastAPI-based services and external APIs**  
 
-- Maintained and extended a trade-reconciliation service handling $50B+ daily
-  notional across 12 asset classes.
-- Shipped a latency-optimization that cut p99 from 340ms to 85ms.
+---
 
-### TCS — Systems Engineer
-*2020 – 2021 · Remote*
+### TCS (Client: Hilton) -- Hyderabad, India  
+**AI/ML Engineer**  
+Jun 2022 – Aug 2024  
 
-- Java backend work on a client ETL pipeline.
+- Developed **LLM-powered applications** using GPT-3.5, LangChain, and vector databases for document understanding  
+- Built **RAG systems with hybrid retrieval (BM25 + embeddings)** on Azure OpenAI and GCP Vertex AI  
+- Fine-tuned transformer models with Hugging Face for domain-specific NLP tasks  
+- Implemented **real-time inference pipelines** using Kafka and Azure Event Hubs  
+- Designed scalable **ETL pipelines with Azure Data Factory and Snowflake**  
+- Established **MLOps workflows (MLflow, Docker, Kubernetes, CI/CD)**  
+- Delivered dashboards in **Power BI/Tableau** to track model performance  
+
+---
+
+### Goldman Sachs -- Hyderabad, India  
+**Data Scientist / ML Engineer**  
+Nov 2020 – May 2022  
+
+- Built **fraud detection and classification models** using XGBoost and Scikit-learn  
+- Performed large-scale data processing with **PySpark and Apache Spark**  
+- Applied **feature engineering (PCA, encoding, normalization)** to improve model accuracy  
+- Conducted **EDA and statistical analysis** for financial datasets  
+- Implemented **model explainability (SHAP, LIME)** for compliance and transparency  
+- Deployed ML models on AWS/Azure with scalable infrastructure  
+
+---
 
 ## Projects
 
-### Polymarket BTC Trading Bot (personal, 2024)
-- Automated bot trading 5-minute BTC prediction markets on Polymarket; profitable
-  in 6-week live test.
-- Debugged order-precision issues (USDC 2dp, shares 4dp); contributed patches upstream.
+- **Production RAG Pipeline**  
+  Hybrid retrieval + reranking RAG system with evaluation pipeline  
+  https://github.com/racharajeshAI/production-rag  
 
-### PixelAI — AI image editor (capstone, 2024)
-- FastAPI backend orchestrating 4 ML models: professionalism classifier (EfficientNet-B3),
-  background removal (U2Net), depth-aware blur (MiDaS), upscaling (Real-ESRGAN).
-- Deployed to Kent State's GPU cluster with a custom venv workaround for the
-  locked-down Python environment.
+- **RAG Research Assistant**  
+  Multi-document QA system with citations, confidence scoring, and contradiction detection  
+  https://github.com/racharajeshAI/rag-research-assistant  
+
+- **LLM Evaluator Harness**  
+  Framework for systematic LLM evaluation with multiple scoring metrics and trend tracking  
+  https://github.com/racharajeshAI/llm-evaluator-harness  
+
+- **RAG Monitoring System**  
+  Observability platform tracking latency and faithfulness in production RAG pipelines  
+  https://github.com/racharajeshAI/rag-monitoring  
+
+- **Streaming Fraud Detector**  
+  Real-time fraud detection system using Kafka and XGBoost  
+  https://github.com/racharajeshAI/streaming-fraud-detector  
+
+---
 
 ## Education
 
-### Kent State University — BS Computer Science
-*Expected 2026*
+**Master’s Degree in Computer Science**  
+Kent State University, Kent, OH  
+
+**Bachelor’s Degree in Electrical Engineering**  
+Mahatma Gandhi Institute of Technology, Hyderabad, India  
+
+---
 
 ## Skills
 
-Python · Go · TypeScript · PyTorch · LangChain · LangGraph · FastAPI · Postgres ·
-OpenSearch · Redis · Kubernetes · AWS (ECS, Bedrock, S3) · Claude API · OpenAI API ·
-Ollama · SHAP · LIME · W&B · Playwright
+**AI/ML:**  
+GPT-4, LLaMA2, BERT, SBERT, Hugging Face Transformers, LangChain, RAG Pipelines  
+
+**MLOps & Cloud:**  
+AWS SageMaker, Azure ML, GCP Vertex AI, MLflow, Docker, Kubernetes, Jenkins  
+
+**Data & Streaming:**  
+PySpark, Apache Spark, Kafka, Databricks, Snowflake, Azure Data Factory  
+
+**Backend & APIs:**  
+FastAPI, REST APIs, PostgreSQL  
+
+**Programming:**  
+Python, SQL  
+
+---
+
+## Certifications
+
+- IBM Generative AI Engineering  
+- AWS Cloud Practitioner Essentials  

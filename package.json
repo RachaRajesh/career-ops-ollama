@@ -8,6 +8,8 @@
     "node": ">=18.0.0"
   },
   "scripts": {
+    "start": "node scripts/menu.mjs",
+    "menu": "node scripts/menu.mjs",
     "doctor": "node scripts/doctor.mjs",
     "evaluate": "node scripts/evaluate.mjs",
     "pdf": "node scripts/generate-pdf.mjs",
