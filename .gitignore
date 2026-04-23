@@ -1,0 +1,12 @@
+node_modules/
+.env
+cv.md
+config/profile.yml
+portals.yml
+data/
+reports/
+output/
+jds/*.txt
+!jds/sample.txt
+.DS_Store
+*.log

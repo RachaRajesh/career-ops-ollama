@@ -1,0 +1,86 @@
+# config/profile.yml — copy this to config/profile.yml and edit.
+# Everything here is used by the evaluator (for personalization) and by the
+# auto-apply script (as ground truth for form fields).
+
+# --- Identity ---
+name: "Your Full Name"
+email: "you@example.com"
+phone: "+1-555-555-5555"
+location: "City, State, Country"
+linkedin: "https://linkedin.com/in/yourhandle"
+github: "https://github.com/yourhandle"
+website: ""
+
+# --- Work preferences ---
+# The evaluator uses these to score fit. The apply script uses them to fill forms.
+desired_roles:
+  - "AI/ML Engineer"
+  - "Applied AI Engineer"
+  - "LLM Engineer"
+archetypes_of_interest:
+  - "LLMOps"
+  - "Agentic"
+  - "FDE"
+seniority: "mid"  # junior | mid | senior | staff | principal
+open_to_remote: true
+open_to_hybrid: true
+open_to_onsite: false
+willing_to_relocate: false
+locations_ok:
+  - "United States (remote)"
+  - "Cleveland, OH"
+
+# --- Compensation ---
+# Used for the comp research section AND for salary fields on applications.
+# If you leave target_base_usd null, the apply script will flag salary questions
+# for manual review instead of guessing.
+target_base_usd: null        # e.g. 140000
+minimum_base_usd: null       # e.g. 120000
+currency: "USD"
+
+# --- Work authorization ---
+# BE HONEST HERE. The apply script uses these verbatim on ATS forms.
+# If any of these are wrong, your application will be misrepresented.
+work_authorization:
+  us:
+    authorized_to_work: true        # "Are you legally authorized to work in the US?"
+    requires_sponsorship_now: false # "Do you currently require sponsorship?"
+    requires_sponsorship_future: true # "Will you require sponsorship in the future?"
+    visa_status: "F-1 OPT"          # or "USC", "GC", "H-1B", "TN", etc.
+
+# --- Demographics (EEO) ---
+# Most applications include optional self-ID questions. These are always
+# optional. By default we tell the LLM to leave them blank — edit below if
+# you want specific answers populated.
+eeo:
+  gender: null           # e.g. "male", "female", "non-binary", "prefer not to say"
+  ethnicity: null
+  veteran_status: null   # e.g. "not a veteran"
+  disability_status: null
+
+# --- Strengths / proof points (used by evaluator for personalization) ---
+proof_points:
+  - "Built an AI-powered image editor (FastAPI + 4 ML models) as capstone"
+  - "Shipped a profitable automated trading bot on Polymarket (BTC prediction markets)"
+  - "Production Gen AI work at UnitedHealth Group"
+  - "Deep experience with LLMs, RAG, SHAP/LIME, SFT/RLHF"
+
+avoid:
+  - "Pure frontend roles"
+  - "Sales engineering"
+  - "On-call heavy SRE work"
+
+# --- Scoring weights (evaluator, optional) ---
+# Bump these if something matters more to you. Sum doesn't need to be 1.0;
+# the evaluator normalizes internally.
+scoring_weights:
+  tech_match: 0.25
+  domain_interest: 0.15
+  compensation: 0.15
+  location_fit: 0.10
+  growth_potential: 0.10
+  company_trajectory: 0.10
+  work_life_balance: 0.05
+  team_quality: 0.05
+  mission_alignment: 0.03
+  risk: 0.02

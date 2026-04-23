@@ -1,0 +1,30 @@
+Title: Senior Applied AI Engineer
+Company: Acme Labs
+Location: Remote (US) or San Francisco, CA
+
+About the role
+
+We're hiring a Senior Applied AI Engineer to lead the design and rollout of
+our next-generation retrieval + agentic stack. You'll own the full lifecycle:
+data pipelines, retrieval algorithms, eval harnesses, and production
+deployment. You'll work closely with our research team to productionize
+frontier techniques.
+
+What you'll do
+- Design and ship retrieval systems over heterogeneous data (docs, code,
+  telemetry, structured records)
+- Build evaluation frameworks for LLM-powered features and drive eval-guided
+  development across the company
+- Integrate agentic workflows (tool use, planning, reflection) into
+  production systems serving 5M+ users
+- Mentor mid-level engineers and set technical direction for the applied AI org
+
+Requirements
+- 4+ years building production ML / AI systems
+- Deep experience with LLMs (prompt engineering, fine-tuning, RAG)
+- Strong Python; comfort with at least one of Go, Rust, or TypeScript
+- Experience with vector databases and retrieval algorithms
+- Published eval methodology or similar is a plus
+
+Compensation: $180k–$240k base + equity + benefits. Remote OK in US.
+Sponsorship available for existing visa holders (H-1B transfer, no cap-subject).

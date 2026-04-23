@@ -1,0 +1,28 @@
+# templates/portals.example.yml — copy to portals.yml and edit.
+# Each entry needs at minimum: name + url. The url should point at the
+# company's careers / jobs page.
+
+companies:
+  - name: Anthropic
+    url: https://www.anthropic.com/careers
+  - name: OpenAI
+    url: https://openai.com/careers/search
+  - name: ElevenLabs
+    url: https://elevenlabs.io/careers
+  - name: Cohere
+    url: https://cohere.com/careers
+  - name: Mistral
+    url: https://jobs.lever.co/mistral
+  - name: Retool
+    url: https://boards.greenhouse.io/retool
+  - name: Vercel
+    url: https://vercel.com/careers
+  - name: Langfuse
+    url: https://langfuse.com/careers
+  - name: Pinecone
+    url: https://www.pinecone.io/careers/
+  - name: LangChain
+    url: https://www.langchain.com/careers
+  # Add your own:
+  #  - name: YourTarget
+  #    url: https://boards.greenhouse.io/yourtarget

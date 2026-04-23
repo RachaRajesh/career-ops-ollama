@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CV</title>
+<style>
+  /* Minimal ATS-friendly CV template.
+     Single column, standard fonts, no tables for layout. ATS systems parse
+     this cleanly. Replace with upstream's Space Grotesk + DM Sans template
+     (templates/cv-template.html in santifer/career-ops) if you want the
+     designed look — both work identically with this pipeline. */
+  @page { size: Letter; margin: 0.5in; }
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 10.5pt;
+    line-height: 1.45;
+    color: #111;
+    max-width: 7.5in;
+    margin: 0 auto;
+  }
+  h1 { font-size: 20pt; margin: 0 0 4px; letter-spacing: 0.5px; }
+  h2 {
+    font-size: 11pt;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    border-bottom: 1px solid #111;
+    padding-bottom: 2px;
+    margin: 18px 0 8px;
+  }
+  h3 { font-size: 11pt; margin: 10px 0 2px; }
+  p, li { margin: 2px 0; }
+  ul { padding-left: 18px; margin: 4px 0 8px; }
+  code { font-family: 'SF Mono', Menlo, monospace; font-size: 9.5pt; }
+  a { color: #111; text-decoration: none; }
+  .source { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+  <!-- The evaluate pipeline pastes the tailored CV markdown here.
+       For a real deployment you'd run this through a markdown-to-HTML
+       converter first; the raw-text fallback below still renders readably. -->
+  <pre class="source">{{CV_MARKDOWN}}</pre>
+</body>
+</html>

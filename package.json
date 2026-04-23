@@ -1,0 +1,24 @@
+{
+  "name": "career-ops-ollama",
+  "version": "1.0.0",
+  "description": "Local-LLM fork of career-ops. Runs evaluations via Ollama instead of Claude Code, adds human-reviewed auto-apply.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "doctor": "node scripts/doctor.mjs",
+    "evaluate": "node scripts/evaluate.mjs",
+    "pdf": "node scripts/generate-pdf.mjs",
+    "scan": "node scripts/scan.mjs",
+    "batch": "node scripts/batch.mjs",
+    "tracker": "node scripts/tracker.mjs",
+    "apply": "node scripts/apply.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "js-yaml": "^4.1.0",
+    "playwright": "^1.48.0"
+  }
+}
