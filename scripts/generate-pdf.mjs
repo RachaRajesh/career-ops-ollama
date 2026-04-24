@@ -33,7 +33,14 @@ async function main() {
   const profile = readYaml(paths.profile);
 
   const company = (report.match(/^# (.+?) —/m)?.[1] || 'company').trim();
-  const role    = cleanRoleTitle((report.match(/^# .+? — (.+)$/m)?.[1] || 'role').trim());
+  // Try to extract role from report; if it's junk, fall back to the user's
+  // primary desired role from profile.yml, then to a safe generic.
+  let role = cleanRoleTitle((report.match(/^# .+? — (.+)$/m)?.[1] || '').trim());
+  if (!role) {
+    const desired = Array.isArray(profile.desired_roles) ? profile.desired_roles[0] : null;
+    role = desired ? cleanRoleTitle(desired) : '';
+  }
+  if (!role) role = 'AI Engineer';   // last-resort default, never "unknown"
 
   console.log(c.cyan(`→ tailoring CV for ${company} / ${role}`));
   console.log(c.dim('  asking the model for structured resume data...'));
@@ -368,6 +375,16 @@ function cleanRoleTitle(s) {
     // 7. Collapse whitespace
     .replace(/\s+/g, ' ')
     .trim();
+
+  // ★ Reject junk values before canonical matching. When the evaluator can't
+  // extract a title from a blocked page (Workday, Oracle) it returns "unknown"
+  // or "role" or empty. Previously this fell through and printed as-is on the
+  // resume ("UNKNOWN" uppercased by CSS). Now return empty so the caller can
+  // fall back to profile.yml's desired_roles[0].
+  const junkValues = /^(unknown|role|n\/?a|null|none|tbd|t\.b\.d|\?|-)$/i;
+  if (!cleaned || junkValues.test(cleaned)) {
+    return '';
+  }
 
   // Now pattern-match to one of the canonical buckets.
   const lower = cleaned.toLowerCase();
