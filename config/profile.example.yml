@@ -32,31 +32,83 @@ locations_ok:
 
 # --- Compensation ---
 # Used for the comp research section AND for salary fields on applications.
-# If you leave target_base_usd null, the apply script will flag salary questions
-# for manual review instead of guessing.
+# If target_base_usd is null, the apply script flags salary questions for
+# manual review instead of guessing.
 target_base_usd: null        # e.g. 140000
 minimum_base_usd: null       # e.g. 120000
 currency: "USD"
 
 # --- Work authorization ---
 # BE HONEST HERE. The apply script uses these verbatim on ATS forms.
-# If any of these are wrong, your application will be misrepresented.
+# Lying here = lying on your application = offer rescission or worse on F-1/OPT.
 work_authorization:
   us:
-    authorized_to_work: true        # "Are you legally authorized to work in the US?"
-    requires_sponsorship_now: false # "Do you currently require sponsorship?"
+    authorized_to_work: true         # "Are you legally authorized to work in the US?"
+    requires_sponsorship_now: false  # "Do you currently require sponsorship?"
     requires_sponsorship_future: true # "Will you require sponsorship in the future?"
-    visa_status: "F-1 OPT"          # or "USC", "GC", "H-1B", "TN", etc.
+    visa_status: "F-1 OPT"           # "USC", "GC", "H-1B", "TN", "F-1 OPT", etc.
 
 # --- Demographics (EEO) ---
-# Most applications include optional self-ID questions. These are always
-# optional. By default we tell the LLM to leave them blank — edit below if
-# you want specific answers populated.
+# Always optional by US law. Fill with your truthful answers; the apply script
+# uses them verbatim. Set to null to have the field flagged for manual review.
+#
+# For race: `race` is your answer from the standard EEO bucket list (Asian,
+# Black, Hispanic/Latino, White, etc.). `race_detail` is a more specific
+# version used only if the form has a freetext "describe" field.
 eeo:
-  gender: null           # e.g. "male", "female", "non-binary", "prefer not to say"
-  ethnicity: null
-  veteran_status: null   # e.g. "not a veteran"
-  disability_status: null
+  gender: null                            # "male" | "female" | "non-binary" | "prefer not to say"
+  race: null                              # e.g. "Asian"
+  race_detail: null                       # e.g. "Indian" (South Asian)
+  hispanic_or_latino: false               # true | false
+  veteran_status: "I am not a protected veteran"
+  disability_status: "I do not have a disability"
+
+# --- Application defaults ---
+# Answers to the logistical / legal questions that appear on nearly every app.
+# The apply script uses these verbatim. Set any to null to flag for manual review.
+application_defaults:
+  # Work logistics
+  current_state: "OH"                     # 2-letter state code
+  subject_to_non_compete: false           # "Are you subject to a non-compete?"
+  willing_to_travel: false                # true if you'll travel for the role
+
+  # Communication preferences
+  ok_to_contact_by_email: true
+  ok_to_contact_by_phone: true
+  ok_to_contact_by_sms: true
+
+  # Legal agreements — you are responsible for knowing what you're agreeing to.
+  # The script clicks these boxes ONLY if true; it never clicks "I certify"
+  # without an explicit true here.
+  agree_to_terms: true                    # Privacy policy, ToS, etc.
+  agree_to_background_check: true         # You DO want this in most cases
+  certify_info_is_true: true              # "I certify the above is true and complete."
+                                          # This applies ONLY to fields you explicitly
+                                          # filled out via profile.yml. The script will
+                                          # NOT click this box if any REQUIRED field
+                                          # was left blank or AI-drafted without review.
+
+  # Start date
+  available_start_date: "2 weeks after offer"   # freeform, used if asked
+  earliest_start_date_iso: null                 # e.g. "2026-05-15" — used for date pickers
+
+  # Optional: templated "why are you interested" fallback.
+  # The AI prefers to write tailored essays grounded in the CV. But if you want
+  # a default line to always appear in short text boxes where the AI declines:
+  why_interested_generic: null
+  # Example:
+  # why_interested_generic: "I'm excited about applying my GenAI experience to
+  #   teams building production AI systems at scale — especially around RAG,
+  #   evaluation, and MLOps."
+
+# --- Essay-writing policy for the AI ---
+# The apply script uses your CV + these hints when writing open-ended answers
+# ("tell us about a project", "why this role", etc.). Keep them short; the AI
+# weaves them into longer prose with grounding from your CV.
+essay_hints:
+  what_drives_you: "Building production AI that actually ships to real users — not demos."
+  ideal_team: "Small team, high ownership, shipping weekly, real feedback loops."
+  career_focus: "Going deep on GenAI + LLM eval + production RAG — places that take reliability seriously."
 
 # --- Strengths / proof points (used by evaluator for personalization) ---
 proof_points:
@@ -71,8 +123,7 @@ avoid:
   - "On-call heavy SRE work"
 
 # --- Scoring weights (evaluator, optional) ---
-# Bump these if something matters more to you. Sum doesn't need to be 1.0;
-# the evaluator normalizes internally.
+# Bump these if something matters more to you. The evaluator normalizes internally.
 scoring_weights:
   tech_match: 0.25
   domain_interest: 0.15

@@ -36,6 +36,9 @@ import { paths, c, parseArgs, readFileOr, readYaml, ensureDir } from './lib/util
 
 const args = parseArgs();
 const url = args.flags.url || args.positional[0];
+// Optional: tailored resume PDF to attach to this application. When bulk-apply
+// runs, it'll pass the PDF that was generated for this specific JD.
+const resumePdfPath = args.flags.resume || '';
 if (!url || !/^https?:\/\//.test(url)) {
   console.error(c.red('Pass --url https://... (the application page URL)'));
   process.exit(1);
@@ -108,25 +111,77 @@ async function main() {
       await page.waitForTimeout(2000);
     }
 
-    // STEP 4: Extract form fields
-    console.log(c.cyan('→ extracting form fields'));
-    const fields = await extractFormFields(page);
-    console.log(c.dim(`  found ${fields.length} fillable fields`));
-
-    if (fields.length === 0) {
-      failureReason = 'no form detected (page may still be a job listing)';
-      console.log(c.yellow('  No form detected. Try clicking Apply Now manually, then re-run.'));
-      await logFailure(url, failureReason);
-      return;
+    // STEP 3b: Attach the tailored resume PDF to any visible file-upload field
+    if (resumePdfPath) {
+      if (!fs.existsSync(resumePdfPath)) {
+        console.log(c.yellow(`  ⚠ Resume PDF not found at ${resumePdfPath} — skipping upload`));
+      } else {
+        console.log(c.cyan(`→ attaching resume PDF (${path.basename(resumePdfPath)})`));
+        const uploaded = await attachResume(page, resumePdfPath);
+        if (uploaded) console.log(c.dim(`  uploaded`));
+        else          console.log(c.dim(`  no resume-upload field found on this page`));
+      }
     }
 
-    // STEP 5: Propose answers via LLM
-    console.log(c.cyan('→ proposing answers via local LLM (this step takes 30–90s)'));
-    const proposals = await proposeAnswers({ fields, cv, profile });
+    // STEP 4-6: Multi-step form loop — fill page, click Next, fill next page.
+    // Stops when we hit the submit-only step (where only "Submit Application"
+    // button remains — that's for the human to click).
+    const MAX_STEPS = 6;   // safety cap — most ATS forms are 2-4 steps
+    const allFilled = [];
+    let step = 0;
 
-    // STEP 6: Fill the form
-    console.log(c.cyan('→ filling form'));
-    const filled = await fillForm(page, fields, proposals);
+    while (step < MAX_STEPS) {
+      step++;
+      console.log(c.bold(c.cyan(`\n  Step ${step}:`)));
+
+      // Some multi-step forms present resume upload on step 2 (after basic info).
+      // Re-run the attach in each step in case the upload field appears now.
+      if (step > 1 && resumePdfPath && fs.existsSync(resumePdfPath)) {
+        const uploaded = await attachResume(page, resumePdfPath);
+        if (uploaded) console.log(c.dim(`  uploaded resume on step ${step}`));
+      }
+
+      // Dismiss any popup that may have appeared when advancing
+      await dismissCookieBanner(page);
+
+      // Extract fields on THIS step
+      console.log(c.cyan('  → extracting form fields'));
+      const fields = await extractFormFields(page);
+      console.log(c.dim(`    found ${fields.length} fillable fields`));
+
+      if (fields.length === 0 && step === 1) {
+        // Never got a form at all
+        failureReason = 'no form detected (page may still be a job listing)';
+        console.log(c.yellow('  No form detected. Try clicking Apply Now manually, then re-run.'));
+        await logFailure(url, failureReason);
+        return;
+      }
+
+      if (fields.length > 0) {
+        console.log(c.cyan('  → proposing answers via local LLM (30–90s)'));
+        const proposals = await proposeAnswers({ fields, cv, profile });
+        console.log(c.cyan('  → filling form'));
+        const filled = await fillForm(page, fields, proposals);
+        allFilled.push(...filled);
+      }
+
+      // Try to advance to the next step. If there's no Next button, or only a
+      // Submit-style button is left, stop the loop (we've reached the final
+      // page — the human clicks submit).
+      const advance = await clickNextIfPresent(page);
+      if (advance === 'advanced') {
+        console.log(c.dim(`  advanced to step ${step + 1}`));
+        continue;
+      }
+      if (advance === 'submit-only') {
+        console.log(c.dim(`  next action is "Submit" — stopping here for human review`));
+        break;
+      }
+      // No Next button at all — single-page form, done.
+      break;
+    }
+
+    const filled = allFilled;
 
     // Review summary
     console.log('');
@@ -327,6 +382,106 @@ async function clickApplyNow(page) {
  *
  * Returns: 'signed-in' | 'signed-up' | 'skipped' | 'failed'
  */
+// ===========================================================================
+// Resume PDF upload
+// ===========================================================================
+
+/**
+ * Finds a resume / CV upload input on the current page and uploads the given
+ * PDF to it. Returns true if a matching input was found and the file was
+ * attached, false otherwise.
+ *
+ * Strategy: look for <input type="file"> elements whose name/id/label hints
+ * at "resume", "cv", "upload". Fall back to the first file input on the page
+ * if no hint matches (most single-file application forms only have ONE).
+ */
+async function attachResume(page, pdfPath) {
+  // Collect candidate file inputs with their hint signals
+  const candidates = await page.evaluate(() => {
+    const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
+    return inputs.map((el, index) => {
+      const hay = [
+        el.name, el.id,
+        el.getAttribute('aria-label'),
+        el.closest('label')?.innerText,
+        el.parentElement?.innerText?.slice(0, 200),
+      ].filter(Boolean).join(' ').toLowerCase();
+      return {
+        index,
+        visible: el.offsetParent !== null || el.getAttribute('type') === 'file',
+        isResume: /\b(resume|resum|cv|upload.*(resume|cv))\b/i.test(hay),
+      };
+    });
+  });
+
+  // Prefer a resume-hinted input; otherwise fall back to the first file input
+  // (many simple forms only have one file input anyway).
+  const match = candidates.find((c) => c.isResume) || candidates[0];
+  if (!match) return false;
+
+  try {
+    // Use nth(index) to target the specific input element — resolves correctly
+    // even when inputs are styled hidden (common with custom upload buttons).
+    const inputs = await page.locator('input[type="file"]').all();
+    const el = inputs[match.index];
+    if (!el) return false;
+    await el.setInputFiles(pdfPath);
+    await page.waitForTimeout(1500); // let the upload indicator settle
+    return true;
+  } catch (err) {
+    console.log(c.yellow(`  upload attempt failed: ${err.message.split('\n')[0]}`));
+    return false;
+  }
+}
+
+// ===========================================================================
+// Multi-step form navigation — click "Next" / "Continue" buttons
+// ===========================================================================
+
+/**
+ * After filling the current form page, look for a "Next" / "Continue" button
+ * and click it to advance to the next step. Returns 'advanced' | 'submit-only' |
+ * 'none'.
+ *
+ * We are very careful here: we NEVER click a button whose label is "Submit" or
+ * "Apply" (final-action verbs). Those are human-only. "Next", "Continue",
+ * "Save and Continue", "Review" are OK.
+ */
+async function clickNextIfPresent(page) {
+  const dangerousLabels = /\b(submit\s*application|submit\s*now|apply\s*now|send\s*application|confirm\s*and\s*submit)\b/i;
+
+  // Ordered by how explicitly "next-step" they are. Stop at the first visible match.
+  const nextSelectors = [
+    'button:has-text("Save and Continue")',
+    'button:has-text("Save & Continue")',
+    'button:has-text("Continue")',
+    'button:has-text("Next")',
+    'button:has-text("Next Step")',
+    'button:has-text("Next step")',
+    'button:has-text("Review")',
+    'a:has-text("Next")',
+    'a:has-text("Continue")',
+  ];
+
+  for (const sel of nextSelectors) {
+    try {
+      const btn = page.locator(sel).first();
+      if (await btn.isVisible({ timeout: 300 })) {
+        const labelText = (await btn.innerText()) || '';
+        if (dangerousLabels.test(labelText)) {
+          // This is a submit-style button masquerading as "next" — do NOT click
+          return 'submit-only';
+        }
+        await btn.scrollIntoViewIfNeeded();
+        await btn.click({ timeout: 3000 });
+        await page.waitForTimeout(2500);
+        return 'advanced';
+      }
+    } catch { /* try next */ }
+  }
+  return 'none';
+}
+
 async function handleAuthGate(page) {
   const hasAuth = await page.evaluate(() => {
     const emailVisible = Array.from(document.querySelectorAll('input[type="email"], input[name*="email" i]'))
@@ -501,35 +656,94 @@ async function proposeAnswers({ fields, cv, profile }) {
   const system = [
     'You fill out job application forms on behalf of a candidate.',
     '',
-    'STRICT RULES — violating these is worse than leaving a field blank:',
-    '  1. NEVER invent personal data. If the answer is not in the candidate',
-    '     profile or CV, set "value" to null and explain in "note".',
-    '  2. For salary / compensation: if a target number is in the profile, use it.',
-    '     Otherwise set value=null and note "needs human — salary not in profile".',
-    '  3. For work authorization, visa status, sponsorship needs, EEO questions,',
-    '     veteran status, disability status: ONLY answer if explicitly in the',
-    '     profile. Otherwise value=null, note="needs human".',
-    '  4. For yes/no questions where the profile is silent: value=null.',
-    '  5. For long-form "why do you want this role" questions: write 2-3 honest',
-    '     sentences grounded in the CV.',
-    '  6. For dropdowns: pick the option whose `value` or `label` best matches',
-    '     the profile. If nothing matches, value=null.',
+    '════════════════════════════════════════════════════════════════════════',
+    'TWO-TIER POLICY: every field is in exactly ONE of these tiers.',
+    '════════════════════════════════════════════════════════════════════════',
     '',
-    'Return ONLY valid JSON in this shape:',
+    '━━━ TIER 1: FACTUAL FIELDS (use profile.yml verbatim) ━━━',
+    '  Name, email, phone, location, LinkedIn, GitHub, state, school, degree,',
+    '  company names, start/end dates, work authorization, sponsorship need,',
+    '  visa status, EEO answers (gender/race/veteran/disability), communication',
+    '  preferences, agree-to-terms, certify-info-is-true, start date, salary.',
+    '',
+    '  RULE: use EXACTLY what profile.yml says. Never paraphrase, never invent.',
+    '        If profile.yml is null/missing → value=null, note="needs human".',
+    '        NEVER guess these to "just get past validation." Wrong answers',
+    '        here cause offers to be rescinded.',
+    '',
+    '  Salary specifically: use profile.yml target_base_usd if set. Otherwise',
+    '  value=null, note="needs human — salary not in profile". DO NOT invent',
+    '  a number.',
+    '',
+    '  Certification checkboxes ("I certify the above is true"): check ONLY if',
+    '  profile.yml application_defaults.certify_info_is_true is true AND this',
+    '  is the last field. value=null otherwise.',
+    '',
+    '━━━ TIER 2: ESSAY FIELDS (you write these, grounded in CV) ━━━',
+    '  Questions like:',
+    '    - "Tell us about a project you worked on"',
+    '    - "Describe your experience with X technology"',
+    '    - "Why do you want this role?" / "Why this company?"',
+    '    - "What\'s your biggest accomplishment?"',
+    '    - "What do you bring to this role?"',
+    '    - Any open-ended <textarea> or freeform multi-sentence prompt',
+    '    - Cover-letter style fields',
+    '',
+    '  RULE: write a grounded, concrete 2-5 sentence answer pulling from the',
+    '        candidate\'s actual CV. Reference specific technologies, companies,',
+    '        and project outcomes from the CV. Use essay_hints from profile.yml',
+    '        if relevant.',
+    '',
+    '        CRITICAL: every concrete claim must trace back to the CV. You may',
+    '        reword; you may NOT invent. If the CV says "5 years experience",',
+    '        don\'t write "10 years." If the CV says "built RAG at UnitedHealth",',
+    '        don\'t write "built RAG at Google."',
+    '',
+    '        Tone: first-person, conversational, avoid AI-tells like',
+    '        "Spearheaded", "Leveraged", "As an AI Engineer, I...". Write like',
+    '        the candidate wrote it themselves.',
+    '',
+    '        Length: match what the field seems to want. 1-2 sentences for short',
+    '        prompts, 3-5 for standard essay fields, up to 6-8 if the form shows',
+    '        a ~500 word limit.',
+    '',
+    '        confidence: "medium" (always — essay answers are drafts that the',
+    '        human should skim before submit).',
+    '',
+    '━━━ HOW TO TELL TIER 1 FROM TIER 2 ━━━',
+    '  Tier 1 has a "correct" answer that exists somewhere (profile.yml or not at all).',
+    '  Tier 2 is a narrative where the candidate synthesizes their experience.',
+    '',
+    '  If the label contains any of: salary, compensation, pay, wage, race,',
+    '  ethnicity, gender, veteran, disability, authorized, sponsor, visa,',
+    '  citizen, criminal, felony, conviction, drug test, background check,',
+    '  i certify, i agree, consent, sign here  → TIER 1.',
+    '',
+    '  If the label contains any of: describe, tell us about, why, what drew,',
+    '  walk us through, share a time, what interests, what do you bring, in your',
+    '  own words  → TIER 2.',
+    '',
+    '  If ambiguous, default to Tier 1 (safer).',
+    '',
+    'Return ONLY valid JSON:',
     '  { "answers": [ { "selector": "...", "value": "...", "confidence": "high"|"medium"|"low", "note": "..." } ] }',
     '',
-    '"note" is required when confidence is "low" or when value is null.',
+    '"note" is REQUIRED when value is null (explain what info is missing) or',
+    'when you wrote a Tier 2 essay (note="AI-drafted — review before submit").',
   ].join('\n');
 
   const user = [
-    `CANDIDATE PROFILE:\n${JSON.stringify(profile, null, 2)}`,
+    `CANDIDATE PROFILE (source of truth for Tier 1 factual fields):`,
+    JSON.stringify(profile, null, 2),
     '',
-    `CANDIDATE CV:\n${cv}`,
+    `CANDIDATE CV (source of truth for Tier 2 essay grounding):`,
+    cv,
     '',
-    `FORM FIELDS (fill these):\n${JSON.stringify(fields, null, 2)}`,
+    `FORM FIELDS (fill these — classify each as Tier 1 or Tier 2 per policy):`,
+    JSON.stringify(fields, null, 2),
   ].join('\n');
 
-  const out = await chatJSON({ system, user, temperature: 0.2 });
+  const out = await chatJSON({ system, user, temperature: 0.3 });
   return out.answers || [];
 }
 
