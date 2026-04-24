@@ -5,13 +5,13 @@
 <title>{{NAME}} — Resume</title>
 <style>
   /* =========================================================================
-     Single-column resume template — matches the user's ORG_resume.pdf style
-     - Black header band with name + role + contact in white
-     - White body with caps section headers and horizontal-rule underline
-     - Job titles bold, company/dates on subline
-     - Skills as a single grouped paragraph at the bottom
-     - System fonts only — Helvetica/Arial fallback
-     - ATS-friendly: real text, no images-as-text, no layout tables
+     Clean professional resume template — Canva-style
+     - Centered header: name LARGE, role underneath, contact row below
+     - NO black box, NO solid-color blocks anywhere
+     - Thin gray dividers under section headers (subtle, classic)
+     - Generous white space — looks like something a designer built
+     - System fonts only: Georgia for display, Helvetica for body
+     - ATS-friendly: real text, semantic HTML, no images-as-text
      ========================================================================= */
   @page {
     size: Letter;
@@ -22,66 +22,82 @@
     margin: 0;
     padding: 0;
     font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    color: #1a1a1a;
+    color: #2b2b2b;
     font-size: 10pt;
-    line-height: 1.45;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     background: #ffffff;
   }
 
-  /* ─── Header band (black) ─────────────────────────────────────────────── */
+  /* ─── Centered header ─────────────────────────────────────────────────── */
   .header {
-    background: #1a1a1a;
-    color: #ffffff;
-    padding: 0.25in 0.55in 0.4in 0.55in;
+    text-align: center;
+    padding: 0.15in 0.6in 0.25in 0.6in;
+    background: #ffffff;
   }
   .header h1 {
     margin: 0;
-    font-size: 22pt;
-    font-weight: 700;
-    letter-spacing: -0.3px;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 28pt;
+    font-weight: 400;
+    letter-spacing: 2px;
+    color: #1a1a1a;
     line-height: 1.1;
+    text-transform: uppercase;
   }
   .header .role {
     font-size: 11pt;
-    color: #d8d8d8;
-    margin: 4px 0 0.2in 0;
+    color: #666;
+    margin: 8px 0 14px 0;
     font-weight: 400;
+    letter-spacing: 1px;
+    text-transform: uppercase;
   }
   .header .contact {
-    font-size: 9pt;
-    color: #d8d8d8;
+    font-size: 9.5pt;
+    color: #4a4a4a;
     line-height: 1.6;
   }
-  .header .contact span { margin-right: 14px; white-space: nowrap; }
-  .header .contact a { color: inherit; text-decoration: none; }
+  .header .contact .sep {
+    color: #bbb;
+    margin: 0 8px;
+  }
+  .header .contact a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  /* Divider under the contact line, matches the section-divider style */
+  .header-divider {
+    border-top: 0.5pt solid #d0d0d0;
+    margin: 0 0.6in;
+  }
 
   /* ─── Body ────────────────────────────────────────────────────────────── */
   .body {
-    padding: 0.3in 0.55in 0.4in 0.55in;
+    padding: 0.3in 0.6in 0.4in 0.6in;
     background: #ffffff;
   }
 
+  /* Section header: SMALL CAPS, subtle gray rule underneath */
   h2 {
-    font-size: 11pt;
-    font-weight: 700;
+    font-size: 10.5pt;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 2px;
     color: #1a1a1a;
-    margin: 0.28in 0 0.1in 0;
-    padding-bottom: 5px;
-    border-bottom: 1px solid #1a1a1a;
+    margin: 0.24in 0 0.1in 0;
+    padding-bottom: 6px;
+    border-bottom: 0.5pt solid #cfcfcf;
   }
-  /* First section gets less top margin since it's right after the header */
   section:first-of-type h2 { margin-top: 0; }
-
-  section { margin-bottom: 0.18in; }
+  section { margin-bottom: 0.1in; }
 
   /* Summary paragraph */
   .summary {
     font-size: 10pt;
-    line-height: 1.55;
-    color: #2a2a2a;
+    line-height: 1.6;
+    color: #333;
     margin: 0;
     text-align: justify;
   }
@@ -92,66 +108,76 @@
     page-break-inside: avoid;
   }
   .job-title {
-    font-size: 10.5pt;
+    font-size: 11pt;
     font-weight: 700;
     color: #1a1a1a;
     margin: 0;
   }
   .job-meta-line {
     font-size: 9.5pt;
-    color: #555;
-    margin: 1px 0 4px 0;
+    color: #666;
+    margin: 2px 0 6px 0;
     font-weight: 400;
+    font-style: italic;
   }
-  .job-meta-line .dates { color: #777; }
+  .job-meta-line .dates {
+    color: #888;
+    font-style: normal;
+  }
 
+  /* Bullets: looser line-height for 2-3 line expanded bullets */
   .bullets {
     margin: 0;
     padding-left: 18px;
     font-size: 9.8pt;
     line-height: 1.55;
-    color: #2a2a2a;
+    color: #333;
   }
   .bullets li {
     margin-bottom: 5px;
   }
+  .bullets li::marker {
+    color: #888;
+  }
 
-  /* Project blocks — same style as jobs but tighter */
+  /* Projects */
   .project-name {
-    font-size: 10pt;
+    font-size: 10.5pt;
     font-weight: 700;
     color: #1a1a1a;
     margin: 0;
   }
   .project-link {
     font-size: 8.8pt;
-    color: #666;
-    margin: 1px 0 3px 0;
+    color: #777;
+    margin: 2px 0 3px 0;
+    font-style: italic;
     word-break: break-all;
   }
   .project-desc {
     font-size: 9.5pt;
-    color: #2a2a2a;
+    color: #333;
     margin: 0;
-    line-height: 1.45;
+    line-height: 1.5;
   }
 
-  /* Education blocks */
+  /* Education */
   .edu-block .degree {
-    font-size: 10pt;
+    font-size: 10.5pt;
     font-weight: 700;
     color: #1a1a1a;
     margin: 0;
   }
   .edu-block .school {
     font-size: 9.5pt;
-    color: #555;
-    margin: 1px 0 0 0;
+    color: #666;
+    margin: 2px 0 0 0;
+    font-style: italic;
   }
 
-  /* Certifications — compact list */
+  /* Certifications: inline, compact */
   .cert-block {
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
   .cert-block .name {
     font-size: 10pt;
@@ -160,19 +186,24 @@
   }
   .cert-block .issuer {
     font-size: 9.5pt;
-    color: #555;
+    color: #666;
     font-weight: 400;
+    font-style: italic;
   }
 
-  /* Skills — single grouped paragraph layout (matches ORG_resume.pdf) */
+  /* Skills: single paragraph with bold labels, clean spacing */
   .skills-paragraph {
     font-size: 9.8pt;
-    line-height: 1.6;
-    color: #2a2a2a;
+    line-height: 1.7;
+    color: #333;
     margin: 0;
   }
+  .skills-paragraph strong {
+    color: #1a1a1a;
+    font-weight: 600;
+  }
 
-  /* Pagination cleanup */
+  /* Pagination */
   h2 { page-break-after: avoid; }
 </style>
 </head>
@@ -183,6 +214,7 @@
   <div class="role">{{ROLE_TARGET}}</div>
   <div class="contact">{{CONTACT_INLINE}}</div>
 </div>
+<div class="header-divider"></div>
 
 <div class="body">
 

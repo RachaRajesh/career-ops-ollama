@@ -71,9 +71,9 @@ async function main() {
       path: pdfPath,
       format: 'Letter',
       printBackground: true,
-      // Top/bottom margins are per-page, so page 2 also gets breathing room
-      // from the page edges. Left/right stays at 0 so the black header band
-      // can bleed full-width on page 1.
+      // Uniform margins on all sides since the header is now white (no full-bleed).
+      // These are PER-PAGE margins, so continuation pages also get breathing room
+      // from the page edges.
       margin: { top: '0.5in', bottom: '0.4in', left: '0', right: '0' },
     });
     console.log(c.green(`✓ PDF: ${pdfPath}`));
@@ -473,15 +473,16 @@ function renderTemplate(tpl, r) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
-  // Contact — single inline line (matches ORG_resume.pdf style: comma/dot separated)
+  // Contact — centered line with bullet separators between items.
+  // Example: "Cleveland, OH  •  email@x.com  •  +1 555 555 5555  •  linkedin.com/in/..."
   const contactParts = [];
-  if (r.contact.location) contactParts.push(`<span>${esc(r.contact.location)}</span>`);
-  if (r.contact.email)    contactParts.push(`<span><a href="mailto:${esc(r.contact.email)}">${esc(r.contact.email)}</a></span>`);
-  if (r.contact.phone)    contactParts.push(`<span>${esc(r.contact.phone)}</span>`);
-  if (r.contact.linkedin) contactParts.push(`<span><a href="https://${esc(r.contact.linkedin)}">${esc(r.contact.linkedin)}</a></span>`);
-  if (r.contact.github)   contactParts.push(`<span><a href="https://${esc(r.contact.github)}">${esc(r.contact.github)}</a></span>`);
-  if (r.contact.website)  contactParts.push(`<span><a href="https://${esc(r.contact.website)}">${esc(r.contact.website)}</a></span>`);
-  const contactInline = contactParts.join('');
+  if (r.contact.location) contactParts.push(esc(r.contact.location));
+  if (r.contact.email)    contactParts.push(`<a href="mailto:${esc(r.contact.email)}">${esc(r.contact.email)}</a>`);
+  if (r.contact.phone)    contactParts.push(esc(r.contact.phone));
+  if (r.contact.linkedin) contactParts.push(`<a href="https://${esc(r.contact.linkedin)}">${esc(r.contact.linkedin)}</a>`);
+  if (r.contact.github)   contactParts.push(`<a href="https://${esc(r.contact.github)}">${esc(r.contact.github)}</a>`);
+  if (r.contact.website)  contactParts.push(`<a href="https://${esc(r.contact.website)}">${esc(r.contact.website)}</a>`);
+  const contactInline = contactParts.join('<span class="sep">•</span>');
 
   // Skills — flatten the grouped buckets into a single readable paragraph,
   // formatted like the original resume.io style: "Group: items, items. Group: items."
