@@ -76,6 +76,7 @@ async function main() {
   ]) + '\n');
 
   const stats = { ok: 0, partial: 0, failed: 0 };
+  const rosterRows = []; // rows that got a PDF — written to Excel at the end
 
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
@@ -130,17 +131,31 @@ async function main() {
     row.pdf_file = pdfResult.pdfPath ? path.basename(pdfResult.pdfPath) : '';
     row.status = 'ok';
     stats.ok++;
+    rosterRows.push(row);
     console.log(c.green(`      ✓ PDF: ${row.pdf_file}`));
     appendRow(summaryPath, row);
   }
 
-  // 4. Summary
+  // 4. Write the "application roster" Excel — successful runs only, sorted by score.
+  // This is the file the user actually opens when they sit down to apply.
+  // Contains clickable URLs and the matching PDF filename for each.
+  let rosterPath = '';
+  if (rosterRows.length > 0) {
+    rosterPath = path.join(runFolder, 'application_roster.xlsx');
+    await writeRosterExcel(rosterPath, rosterRows, runFolder);
+  }
+
+  // 5. Summary
   console.log('');
   console.log(c.bold('─── DONE ───'));
   console.log(`  ${c.green(stats.ok + ' fully processed')}, ${stats.partial ? c.yellow(stats.partial + ' reports without PDF') : c.dim('0 partial')}, ${stats.failed ? c.red(stats.failed + ' failed') : c.dim('0 failed')}`);
   console.log('');
   console.log(c.dim(`  Folder:  ${runFolder}/`));
   console.log(c.dim(`  Summary: ${summaryPath}`));
+  if (rosterPath) {
+    console.log(c.bold(c.green(`  Roster:  ${rosterPath}`)));
+    console.log(c.dim(`           (open this Excel to see which PDF to use for each URL)`));
+  }
   if (stats.failed > 0) {
     console.log('');
     console.log(c.yellow('  ⚠ Some URLs failed — usually Workday / SuccessFactors / Oracle Cloud which block scrapers.'));
@@ -194,6 +209,103 @@ async function extractUrls(filePath) {
 function cleanUrl(u) {
   // Strip trailing punctuation that sometimes gets captured from copy-paste
   return u.replace(/[)\]}.,;:!?]+$/, '').trim();
+}
+
+/**
+ * Write the "application roster" Excel file — the user's working list when
+ * they sit down to apply to the batch.
+ *
+ * Contents:
+ *   - One row per successfully-processed job
+ *   - Sorted by score descending (apply to strongest matches first)
+ *   - Clickable URL column (Excel/Numbers treats as hyperlink)
+ *   - PDF filename column (the resume to upload for that job)
+ *
+ * Styling:
+ *   - Bold header row with background
+ *   - Score column: green for >=4.5, yellow for 4.0-4.4, orange for <4.0
+ *   - Column widths sized to content so everything's readable
+ */
+async function writeRosterExcel(filepath, rows, runFolder) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'career-ops-ollama';
+  wb.created = new Date();
+  const sheet = wb.addWorksheet('Apply to these', {
+    views: [{ state: 'frozen', ySplit: 1 }],   // freeze header row so it stays visible when scrolling
+  });
+
+  sheet.columns = [
+    { header: '#',           key: 'rank',     width: 4 },
+    { header: 'Score',       key: 'score',    width: 7 },
+    { header: 'Company',     key: 'company',  width: 30 },
+    { header: 'Role',        key: 'role',     width: 45 },
+    { header: 'Resume PDF to use',  key: 'pdf_file', width: 55 },
+    { header: 'Application URL',    key: 'url',      width: 70 },
+    { header: 'Status',      key: 'applied',  width: 12 },
+    { header: 'Notes',       key: 'notes',    width: 30 },
+  ];
+
+  // Header styling
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a1a' } };
+  headerRow.alignment = { vertical: 'middle', horizontal: 'left' };
+  headerRow.height = 22;
+
+  // Sort rows by score descending (strongest matches first) —
+  // candidates with the same score keep their original order
+  const sorted = [...rows].sort((a, b) => {
+    const sa = parseFloat(a.score) || 0;
+    const sb = parseFloat(b.score) || 0;
+    return sb - sa;
+  });
+
+  sorted.forEach((r, i) => {
+    const scoreNum = parseFloat(r.score) || 0;
+    const row = sheet.addRow({
+      rank: i + 1,
+      score: scoreNum ? `${scoreNum}/5` : 'n/a',
+      company: r.company || '—',
+      role: r.role || '—',
+      pdf_file: r.pdf_file || '—',
+      url: r.url,
+      applied: '',           // blank by default — user fills "applied" / "skipped" as they work
+      notes: '',             // user can add their own notes
+    });
+
+    // Clickable hyperlink on the URL cell — Excel and Numbers both respect this
+    const urlCell = row.getCell('url');
+    urlCell.value = { text: r.url, hyperlink: r.url };
+    urlCell.font = { color: { argb: 'FF0066CC' }, underline: true };
+
+    // Color-code the score cell
+    const scoreCell = row.getCell('score');
+    if (scoreNum >= 4.5) {
+      scoreCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD4EDDA' } }; // green-ish
+      scoreCell.font = { bold: true, color: { argb: 'FF155724' } };
+    } else if (scoreNum >= 4.0) {
+      scoreCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } }; // yellow-ish
+      scoreCell.font = { bold: true, color: { argb: 'FF856404' } };
+    } else {
+      scoreCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE0B3' } }; // orange-ish
+      scoreCell.font = { color: { argb: 'FF7A4A00' } };
+    }
+
+    // Row height a bit taller for readability
+    row.height = 18;
+    row.alignment = { vertical: 'middle', wrapText: false };
+  });
+
+  // Add a summary info row at the top BEFORE the header? No — keep it clean.
+  // Instead: add an empty row at the bottom with a note about where PDFs are.
+  sheet.addRow({});
+  const infoRow = sheet.addRow({
+    company: `All PDFs are in this same folder: ${path.basename(runFolder)}/`,
+  });
+  infoRow.getCell('company').font = { italic: true, color: { argb: 'FF666666' } };
+  sheet.mergeCells(`C${infoRow.number}:H${infoRow.number}`);
+
+  await wb.xlsx.writeFile(filepath);
 }
 
 // ---------------------------------------------------------------------------
