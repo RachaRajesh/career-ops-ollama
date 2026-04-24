@@ -136,16 +136,28 @@ async function main() {
     appendRow(summaryPath, row);
   }
 
-  // 4. Write the "application roster" Excel — successful runs only, sorted by score.
+  // 4. Rank-prefix the PDF files so Finder-sort matches the roster order.
+  // Roster is sorted by score descending, so rank 01 = top score.
+  // Files get renamed from "Sayari_AI-Engineer_DATE.pdf" to
+  // "07_Sayari_AI-Engineer_DATE.pdf" (row 7 in roster). Also renames the
+  // companion .json and .html files so they stay together.
+  if (rosterRows.length > 0) {
+    prefixPdfsByRank(rosterRows, runFolder);
+    // summary.csv was written with the ORIGINAL (unprefixed) filenames. Rewrite
+    // it now that names have changed so the CSV stays accurate.
+    rewriteSummaryCsv(summaryPath, rosterRows);
+  }
+
+  // 5. Write the "application roster" Excel — successful runs only, sorted by score.
   // This is the file the user actually opens when they sit down to apply.
-  // Contains clickable URLs and the matching PDF filename for each.
+  // Contains clickable URLs and the matching (rank-prefixed) PDF filename for each.
   let rosterPath = '';
   if (rosterRows.length > 0) {
     rosterPath = path.join(runFolder, 'application_roster.xlsx');
     await writeRosterExcel(rosterPath, rosterRows, runFolder);
   }
 
-  // 5. Summary
+  // 6. Summary
   console.log('');
   console.log(c.bold('─── DONE ───'));
   console.log(`  ${c.green(stats.ok + ' fully processed')}, ${stats.partial ? c.yellow(stats.partial + ' reports without PDF') : c.dim('0 partial')}, ${stats.failed ? c.red(stats.failed + ' failed') : c.dim('0 failed')}`);
@@ -226,6 +238,114 @@ function cleanUrl(u) {
  *   - Score column: green for >=4.5, yellow for 4.0-4.4, orange for <4.0
  *   - Column widths sized to content so everything's readable
  */
+/**
+ * Sort rosterRows by score (descending) and rename each PDF + companion
+ * files (.json, .html) with a zero-padded rank prefix.
+ *
+ * After this runs:
+ *   - rosterRows is sorted by score desc (same order as the roster Excel)
+ *   - Each row.pdf_file reflects the new prefixed filename
+ *   - The files on disk have been physically renamed
+ *
+ * Example: if Sayari ends up at rank 7, its files become:
+ *   07_Sayari_AI-Engineer_2026-04-23_20-41.pdf
+ *   07_Sayari_AI-Engineer_2026-04-23_20-41.json
+ *   07_Sayari_AI-Engineer_2026-04-23_20-41.html
+ */
+function prefixPdfsByRank(rosterRows, runFolder) {
+  // Sort IN-PLACE by score desc — this is the same order the roster will use.
+  rosterRows.sort((a, b) => (parseFloat(b.score) || 0) - (parseFloat(a.score) || 0));
+
+  // Zero-pad width based on row count: "07" if 10-99 rows, "007" if 100+
+  const padWidth = String(rosterRows.length).length;
+
+  for (let i = 0; i < rosterRows.length; i++) {
+    const row = rosterRows[i];
+    if (!row.pdf_file) continue;
+
+    const rank = String(i + 1).padStart(padWidth, '0');
+    // Skip if already prefixed (defensive — shouldn't happen but makes re-runs safe)
+    if (new RegExp(`^${rank}_`).test(row.pdf_file)) continue;
+
+    const oldStem = row.pdf_file.replace(/\.pdf$/i, '');
+    const newStem = `${rank}_${oldStem}`;
+
+    // Rename all three companion files if they exist
+    for (const ext of ['.pdf', '.json', '.html']) {
+      const oldPath = path.join(runFolder, oldStem + ext);
+      const newPath = path.join(runFolder, newStem + ext);
+      try {
+        if (fs.existsSync(oldPath)) fs.renameSync(oldPath, newPath);
+      } catch { /* non-fatal — just leaves the file unprefixed */ }
+    }
+
+    // Update the row so the roster Excel references the new name
+    row.pdf_file = newStem + '.pdf';
+  }
+}
+
+/**
+ * Rewrite summary.csv to reflect the renamed PDFs. summary.csv was written
+ * row-by-row DURING the loop (before renames), so its pdf_file column points
+ * at stale names until we refresh it here.
+ */
+function rewriteSummaryCsv(summaryPath, rosterRows) {
+  // Rebuild the file: header + all rosterRows (which now have updated pdf_file)
+  // Rows that aren't in rosterRows (failures/partials) stay as-is.
+  const header = csvLine([
+    'row', 'url', 'status', 'company', 'role', 'score', 'report_file', 'pdf_file', 'notes',
+  ]);
+  const lines = [header];
+
+  // Read existing file, keep only the failure/partial rows (those not in rosterRows)
+  try {
+    const existing = fs.readFileSync(summaryPath, 'utf8').split('\n').slice(1);
+    const rosterUrls = new Set(rosterRows.map((r) => r.url));
+    for (const line of existing) {
+      if (!line.trim()) continue;
+      // Cheap check: if the line's URL isn't in the roster, it was a failure — keep as-is
+      const cols = parseCsvRow(line);
+      if (cols.length >= 2 && !rosterUrls.has(cols[1])) {
+        lines.push(line);
+      }
+    }
+  } catch { /* summary didn't exist or was unreadable; start fresh */ }
+
+  // Append the (now updated, sorted-by-score) roster rows
+  for (const row of rosterRows) {
+    lines.push(csvLine([
+      row.row, row.url, row.status, row.company, row.role, row.score,
+      row.report_file, row.pdf_file, row.notes,
+    ]));
+  }
+
+  fs.writeFileSync(summaryPath, lines.join('\n') + '\n');
+}
+
+/**
+ * Minimal CSV row parser — handles quoted fields with commas/newlines inside.
+ * Good enough for the rows this script writes.
+ */
+function parseCsvRow(line) {
+  const cols = [];
+  let cur = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') { inQuotes = false; }
+      else { cur += ch; }
+    } else {
+      if (ch === ',') { cols.push(cur); cur = ''; }
+      else if (ch === '"') { inQuotes = true; }
+      else { cur += ch; }
+    }
+  }
+  cols.push(cur);
+  return cols;
+}
+
 async function writeRosterExcel(filepath, rows, runFolder) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'career-ops-ollama';
