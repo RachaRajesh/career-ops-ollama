@@ -28,7 +28,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import ExcelJS from 'exceljs';
 import 'dotenv/config';
-import { paths, c, parseArgs, ensureDir } from './lib/util.mjs';
+import { paths, c, parseArgs, ensureDir, readYaml } from './lib/util.mjs';
 
 const args = parseArgs();
 
@@ -72,20 +72,21 @@ async function main() {
   // 3. Per-URL: evaluate, then generate PDF. Write summary.csv row at each step.
   const summaryPath = path.join(runFolder, 'summary.csv');
   fs.writeFileSync(summaryPath, csvLine([
-    'row', 'url', 'status', 'company', 'role', 'score', 'report_file', 'pdf_file', 'notes',
+    'row', 'excel_row', 'url', 'status', 'company', 'role', 'score', 'report_file', 'pdf_file', 'notes',
   ]) + '\n');
 
   const stats = { ok: 0, partial: 0, failed: 0 };
   const rosterRows = []; // rows that got a PDF — written to Excel at the end
 
   for (let i = 0; i < urls.length; i++) {
-    const url = urls[i];
+    const { url, rowNumber } = urls[i];
     const idx = i + 1;
-    console.log(c.bold(c.cyan(`─── [${idx}/${urls.length}] ───`)));
+    console.log(c.bold(c.cyan(`─── [${idx}/${urls.length}]  Excel row ${rowNumber} ───`)));
     console.log(c.dim(`  ${truncate(url, 80)}`));
 
     let row = {
-      row: idx,
+      row: idx,                // processing order (1..N)
+      excel_row: rowNumber,    // actual spreadsheet row number — used for filename prefix
       url,
       status: '',
       company: '',
@@ -136,13 +137,18 @@ async function main() {
     appendRow(summaryPath, row);
   }
 
-  // 4. Rank-prefix the PDF files so Finder-sort matches the roster order.
-  // Roster is sorted by score descending, so rank 01 = top score.
+  // 4. Rename PDFs with Excel row number prefix + generic owner-centric name.
   // Files get renamed from "Sayari_AI-Engineer_DATE.pdf" to
-  // "07_Sayari_AI-Engineer_DATE.pdf" (row 7 in roster). Also renames the
-  // companion .json and .html files so they stay together.
+  // "18_Rajesh-Racha_Resume.pdf" (if Sayari was in spreadsheet row 18).
+  // Also renames the companion .json and .html files so they stay together.
+  //
+  // The Excel row number is used — not the processing index — so you can open
+  // the spreadsheet, see "row 18 is Sayari", and find the matching file
+  // instantly in Finder's sort-by-name view.
   if (rosterRows.length > 0) {
-    prefixPdfsByRank(rosterRows, runFolder);
+    const profile = readYaml(paths.profile) || {};
+    const ownerName = profile.name || profile.candidate?.full_name || 'Resume';
+    prefixPdfsByExcelRow(rosterRows, runFolder, ownerName);
     // summary.csv was written with the ORIGINAL (unprefixed) filenames. Rewrite
     // it now that names have changed so the CSV stays accurate.
     rewriteSummaryCsv(summaryPath, rosterRows);
@@ -181,33 +187,41 @@ async function main() {
 
 async function extractUrls(filePath) {
   const ext = path.extname(filePath).toLowerCase();
-  const urls = new Set();
+  // Map URL → first rowNumber it appeared at. Using Map preserves insertion
+  // order AND lets us dedupe while keeping the earliest row reference.
+  const urlToRow = new Map();
   const pattern = /https?:\/\/[^\s"',<>()]+/g;
+
+  function addUrl(rawUrl, rowNumber) {
+    const u = cleanUrl(rawUrl);
+    if (!u) return;
+    if (!urlToRow.has(u)) urlToRow.set(u, rowNumber);
+  }
 
   if (ext === '.csv' || ext === '.txt' || ext === '.tsv') {
     // Skip the first line — commonly a title or column header
     const lines = fs.readFileSync(filePath, 'utf8').split('\n');
-    const body = lines.slice(1).join('\n');
-    const matches = body.match(pattern) || [];
-    matches.forEach((u) => urls.add(cleanUrl(u)));
+    // Line index 0 = header (skipped). Real row 2 in a spreadsheet = line index 1.
+    for (let i = 1; i < lines.length; i++) {
+      const matches = lines[i].match(pattern) || [];
+      // Row number matches 1-indexed spreadsheet row (i + 1, since i starts at 1 = row 2)
+      matches.forEach((u) => addUrl(u, i + 1));
+    }
   } else if (ext === '.xlsx' || ext === '.xlsm') {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.readFile(filePath);
     wb.eachSheet((sheet) => {
-      // eachRow's callback receives rowNumber as the second arg.
-      // Skip row 1 because it's almost always a title or column header
-      // like "AI Engineer Date 4/23/2026 Part 1" — not a job URL.
       sheet.eachRow((rowObj, rowNumber) => {
+        // Row 1 is almost always a title or column header — skip it.
         if (rowNumber === 1) return;
         rowObj.eachCell((cell) => {
           const text = cell.text || String(cell.value || '');
-          // Also check the hyperlink property — Excel stores the URL separately
-          // when a cell has a clickable link
+          // Excel stores hyperlink URLs separately when cells are clickable links
           if (cell.hyperlink && /^https?:\/\//.test(cell.hyperlink)) {
-            urls.add(cleanUrl(cell.hyperlink));
+            addUrl(cell.hyperlink, rowNumber);
           }
           const matches = text.match(pattern) || [];
-          matches.forEach((u) => urls.add(cleanUrl(u)));
+          matches.forEach((u) => addUrl(u, rowNumber));
         });
       });
     });
@@ -215,7 +229,8 @@ async function extractUrls(filePath) {
     throw new Error(`Unsupported file type: ${ext}. Use .xlsx, .xlsm, .csv, .tsv, or .txt.`);
   }
 
-  return [...urls];
+  // Return [{ url, rowNumber }] in insertion order
+  return [...urlToRow.entries()].map(([url, rowNumber]) => ({ url, rowNumber }));
 }
 
 function cleanUrl(u) {
@@ -239,36 +254,40 @@ function cleanUrl(u) {
  *   - Column widths sized to content so everything's readable
  */
 /**
- * Sort rosterRows by score (descending) and rename each PDF + companion
- * files (.json, .html) with a zero-padded rank prefix.
+ * Rename each PDF + companion files using the Excel row number and a generic
+ * owner-centric filename (no company name, since uploading a file called
+ * "Capgemini_Resume.pdf" to Capgemini's ATS signals you have multiple versions).
  *
- * After this runs:
- *   - rosterRows is sorted by score desc (same order as the roster Excel)
- *   - Each row.pdf_file reflects the new prefixed filename
- *   - The files on disk have been physically renamed
+ * New format: {ROW}_{Name}_Resume.{pdf,json,html}
+ * Example:    02_Rajesh-Racha_Resume.pdf
  *
- * Example: if Sayari ends up at rank 7, its files become:
- *   07_Sayari_AI-Engineer_2026-04-23_20-41.pdf
- *   07_Sayari_AI-Engineer_2026-04-23_20-41.json
- *   07_Sayari_AI-Engineer_2026-04-23_20-41.html
+ * The Excel row number is used verbatim (row 2 in spreadsheet → "02_") so you
+ * can open the Excel, see "row 5 is the Hippocratic AI job", and find the
+ * matching file instantly.
  */
-function prefixPdfsByRank(rosterRows, runFolder) {
-  // Sort IN-PLACE by score desc — this is the same order the roster will use.
-  rosterRows.sort((a, b) => (parseFloat(b.score) || 0) - (parseFloat(a.score) || 0));
+function prefixPdfsByExcelRow(rosterRows, runFolder, ownerName) {
+  // Derive the filename-safe owner slug once — used in every new filename.
+  // "Rajesh Racha" → "Rajesh-Racha"
+  const nameSlug = String(ownerName || 'Resume')
+    .trim()
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'Resume';
 
-  // Zero-pad width based on row count: "07" if 10-99 rows, "007" if 100+
-  const padWidth = String(rosterRows.length).length;
+  // Pad width is based on max row number seen, so 2-digit and 3-digit
+  // spreadsheets both look clean.
+  const maxRow = Math.max(...rosterRows.map((r) => r.excel_row || 0), 1);
+  const padWidth = Math.max(2, String(maxRow).length);
 
-  for (let i = 0; i < rosterRows.length; i++) {
-    const row = rosterRows[i];
-    if (!row.pdf_file) continue;
+  for (const row of rosterRows) {
+    if (!row.pdf_file || !row.excel_row) continue;
 
-    const rank = String(i + 1).padStart(padWidth, '0');
-    // Skip if already prefixed (defensive — shouldn't happen but makes re-runs safe)
-    if (new RegExp(`^${rank}_`).test(row.pdf_file)) continue;
-
+    const rowNum = String(row.excel_row).padStart(padWidth, '0');
     const oldStem = row.pdf_file.replace(/\.pdf$/i, '');
-    const newStem = `${rank}_${oldStem}`;
+    // New stem: "02_Rajesh-Racha_Resume"
+    const newStem = `${rowNum}_${nameSlug}_Resume`;
+
+    // Skip if already in the target format (safe re-runs)
+    if (oldStem === newStem) continue;
 
     // Rename all three companion files if they exist
     for (const ext of ['.pdf', '.json', '.html']) {
@@ -276,10 +295,9 @@ function prefixPdfsByRank(rosterRows, runFolder) {
       const newPath = path.join(runFolder, newStem + ext);
       try {
         if (fs.existsSync(oldPath)) fs.renameSync(oldPath, newPath);
-      } catch { /* non-fatal — just leaves the file unprefixed */ }
+      } catch { /* non-fatal — leaves the file under its old name */ }
     }
 
-    // Update the row so the roster Excel references the new name
     row.pdf_file = newStem + '.pdf';
   }
 }
@@ -293,7 +311,7 @@ function rewriteSummaryCsv(summaryPath, rosterRows) {
   // Rebuild the file: header + all rosterRows (which now have updated pdf_file)
   // Rows that aren't in rosterRows (failures/partials) stay as-is.
   const header = csvLine([
-    'row', 'url', 'status', 'company', 'role', 'score', 'report_file', 'pdf_file', 'notes',
+    'row', 'excel_row', 'url', 'status', 'company', 'role', 'score', 'report_file', 'pdf_file', 'notes',
   ]);
   const lines = [header];
 
@@ -303,9 +321,10 @@ function rewriteSummaryCsv(summaryPath, rosterRows) {
     const rosterUrls = new Set(rosterRows.map((r) => r.url));
     for (const line of existing) {
       if (!line.trim()) continue;
-      // Cheap check: if the line's URL isn't in the roster, it was a failure — keep as-is
+      // Cheap check: URL is at column index 2 (after row, excel_row).
+      // If it's not in the roster, this line was a failure — keep as-is.
       const cols = parseCsvRow(line);
-      if (cols.length >= 2 && !rosterUrls.has(cols[1])) {
+      if (cols.length >= 3 && !rosterUrls.has(cols[2])) {
         lines.push(line);
       }
     }
@@ -314,7 +333,7 @@ function rewriteSummaryCsv(summaryPath, rosterRows) {
   // Append the (now updated, sorted-by-score) roster rows
   for (const row of rosterRows) {
     lines.push(csvLine([
-      row.row, row.url, row.status, row.company, row.role, row.score,
+      row.row, row.excel_row, row.url, row.status, row.company, row.role, row.score,
       row.report_file, row.pdf_file, row.notes,
     ]));
   }
@@ -562,7 +581,7 @@ function extractFailureReason(text) {
 
 function appendRow(summaryPath, row) {
   const line = csvLine([
-    row.row, row.url, row.status, row.company, row.role, row.score,
+    row.row, row.excel_row, row.url, row.status, row.company, row.role, row.score,
     row.report_file, row.pdf_file, row.notes,
   ]);
   fs.appendFileSync(summaryPath, line + '\n');
