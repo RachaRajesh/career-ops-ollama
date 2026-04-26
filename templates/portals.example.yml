@@ -1,8 +1,38 @@
 # templates/portals.example.yml — copy to portals.yml and edit.
-# Each entry needs at minimum: name + url. The url should point at the
-# company's careers / jobs page.
+#
+# This file is consumed by `scripts/scan.mjs` (menu option 4) which crawls
+# each portal's careers page looking for new job listings.
+#
+# ════════════════════════════════════════════════════════════════════════
+# IMPORTANT — what scan.mjs can and CANNOT crawl
+# ════════════════════════════════════════════════════════════════════════
+#
+# WORKS WELL on company-specific careers pages with a finite list of jobs:
+#   - Greenhouse boards (boards.greenhouse.io/<company>)
+#   - Lever boards (jobs.lever.co/<company>)
+#   - Ashby boards (jobs.ashbyhq.com/<company>)
+#   - Direct company /careers pages with a clear job list
+#
+# DOES NOT WORK on general aggregators (Indeed, LinkedIn, Glassdoor,
+# ZipRecruiter, Monster, Dice, etc.) because:
+#   - Millions of listings — no way to crawl meaningfully
+#   - Heavy anti-scraping (Cloudflare, captchas, IP rate limits)
+#   - Login walls
+#   - Listings rotate constantly
+#
+# For aggregators, the right pattern is:
+#   1. Set up email alerts on each one with your search criteria
+#   2. They email you a daily digest of fresh matches
+#   3. Copy the URLs you actually care about into your weekly Excel
+#   4. Run the Excel through option `e` (Process Excel/CSV)
+#
+# That gives you the breadth of aggregators without trying to scrape them.
+# The aggregator entries below are kept as REFERENCE LINKS for the
+# alerts-based workflow, NOT for scanning.
+# ════════════════════════════════════════════════════════════════════════
 
 companies:
+  # ─── AI labs & infra companies (work well with scan.mjs) ────────────
   - name: Anthropic
     url: https://www.anthropic.com/careers
   - name: OpenAI
@@ -23,6 +53,94 @@ companies:
     url: https://www.pinecone.io/careers/
   - name: LangChain
     url: https://www.langchain.com/careers
+  - name: Baseten
+    url: https://jobs.ashbyhq.com/baseten
+  - name: Distyl
+    url: https://jobs.ashbyhq.com/Distyl
+  - name: Mercor
+    url: https://www.mercor.com/careers/
+
+  # ─── Companies from your Part 2 list (mostly Greenhouse / Ashby) ────
+  - name: Pinterest
+    url: https://www.pinterestcareers.com/jobs/?location=remote&search=AI+ML
+  - name: Schrödinger
+    url: https://job-boards.greenhouse.io/schrdinger
+  - name: Lyft
+    url: https://app.careerpuck.com/job-board/lyft
+  - name: Waymo
+    url: https://careers.withwaymo.com/jobs
+  - name: Disney
+    url: https://www.disneycareers.com/en/search-jobs
+  - name: Netflix
+    url: https://explore.jobs.netflix.net/careers
+  - name: Uber
+    url: https://www.uber.com/global/en/careers/list/
+  - name: Chewy
+    url: https://careers.chewy.com/us/en
+  - name: PhysicsX
+    url: https://job-boards.eu.greenhouse.io/physicsx
+  - name: ProlificAcademic
+    url: https://job-boards.eu.greenhouse.io/prolificacademicltd
+  - name: BioRender
+    url: https://jobs.gem.com/biorender
+  - name: MathWorks
+    url: https://www.mathworks.com/company/jobs/opportunities/
+  - name: Bloomberg
+    url: https://bloomberg.avature.net/careers/SearchJobs
+  - name: RedHat
+    url: https://redhat.wd5.myworkdayjobs.com/jobs    # Workday — scan may fail
+  - name: Waystar
+    url: https://careers.waystar.com/
+
+  # ─── General aggregators (REFERENCE only — DO NOT scan, set alerts) ──
+  # These won't be crawled by scan.mjs (see header comment). Keep them here
+  # as the canonical search URLs for setting up email alerts.
+  #
+  # To skip these in scanning, uncomment the `disabled: true` lines below
+  # OR just delete them from this file once you have your alerts set up.
+  - name: Indeed
+    url: https://www.indeed.com/jobs?q=AI+Engineer&l=Remote&fromage=3
+    disabled: true   # set your alerts at: https://www.indeed.com/preferences
+  - name: LinkedIn Jobs
+    url: https://www.linkedin.com/jobs/search/?keywords=AI%20Engineer&f_TPR=r86400
+    disabled: true   # set your alerts in the LinkedIn Jobs section
+  - name: Glassdoor
+    url: https://www.glassdoor.com/Job/jobs.htm?sc.keyword=AI+Engineer&fromAge=1
+    disabled: true
+  - name: ZipRecruiter
+    url: https://www.ziprecruiter.com/Jobs/AI-Engineer
+    disabled: true
+  - name: Monster
+    url: https://www.monster.com/jobs/search?q=ai-engineer
+    disabled: true
+  - name: SimplyHired
+    url: https://www.simplyhired.com/search?q=ai+engineer&fdb=1
+    disabled: true
+  - name: Dice
+    url: https://www.dice.com/jobs?q=AI%20Engineer&filters.postedDate=ONE
+    disabled: true
+  - name: CareerBuilder
+    url: https://www.careerbuilder.com/jobs?keywords=ai+engineer
+    disabled: true
+  - name: TheMuse
+    url: https://www.themuse.com/search/jobs?keyword=ai+engineer
+    disabled: true
+  - name: WayUp
+    url: https://www.wayup.com/s/jobs/?q=ai+engineer
+    disabled: true
+  - name: USAJOBS
+    url: https://www.usajobs.gov/Search/Results?k=ai+engineer
+    disabled: true
+  - name: FlexJobs
+    url: https://www.flexjobs.com/search?search=ai+engineer
+    disabled: true
+  - name: Handshake
+    url: https://app.joinhandshake.com/stu/postings
+    disabled: true   # student/grad-focused — login required
+  - name: Dice (again)
+    url: https://www.dice.com/jobs?q=Machine%20Learning%20Engineer
+    disabled: true
+
   # Add your own:
   #  - name: YourTarget
   #    url: https://boards.greenhouse.io/yourtarget

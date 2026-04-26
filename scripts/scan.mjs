@@ -42,6 +42,14 @@ try {
     const url = typeof company === 'string' ? null : company.url;
     if (!url) { console.log(c.dim(`  skip ${name} (no url)`)); continue; }
 
+    // Skip entries explicitly marked disabled in portals.yml. Used for
+    // general aggregators (Indeed, LinkedIn, etc.) that are listed for
+    // reference but don't crawl meaningfully.
+    if (typeof company === 'object' && company.disabled) {
+      console.log(c.dim(`  skip ${name} (disabled in portals.yml — set up email alerts instead)`));
+      continue;
+    }
+
     console.log(c.cyan(`  ${name}: ${url}`));
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
