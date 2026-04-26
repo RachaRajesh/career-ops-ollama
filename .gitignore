@@ -10,3 +10,4 @@ jds/*.txt
 !jds/sample.txt
 .DS_Store
 *.log
+portals.yml
