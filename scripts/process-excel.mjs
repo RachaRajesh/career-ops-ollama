@@ -78,6 +78,17 @@ async function main() {
   const stats = { ok: 0, partial: 0, failed: 0 };
   const rosterRows = []; // rows that got a PDF — written to Excel at the end
 
+  // Pre-compute the owner name slug + the zero-pad width used for row prefixes.
+  // Doing this once upfront lets us pass the final filename to generate-pdf.mjs
+  // at write time, so each PDF lands with its applicable name immediately
+  // — you can apply with PDF #2 while #20 is still being generated.
+  const profileForName = readYaml(paths.profile) || {};
+  const ownerName = profileForName.name || profileForName.candidate?.full_name || 'Resume';
+  const nameSlug = String(ownerName).trim()
+    .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'Resume';
+  const maxRowNum = Math.max(...urls.map((u) => u.rowNumber || 0), 1);
+  const padWidth = Math.max(2, String(maxRowNum).length);
+
   for (let i = 0; i < urls.length; i++) {
     const { url, rowNumber } = urls[i];
     const idx = i + 1;
@@ -116,9 +127,13 @@ async function main() {
     row.report_file = path.basename(evalResult.reportPath);
     console.log(c.dim(`      ${row.company} — ${row.role}  score ${row.score}/5`));
 
-    // 3b. Generate PDF from the report, routing output to our run folder
-    console.log(c.cyan('  → generating PDF...'));
-    const pdfResult = await runPdf(evalResult.reportPath, runFolder);
+    // 3b. Generate PDF from the report, routing output to our run folder.
+    // Compute the final filename UPFRONT so the PDF lands with its
+    // applicable name immediately — no rename pass needed at the end.
+    // Format: "{ROW}_{Name}_Resume" — e.g. "02_Rajesh-Racha_Resume"
+    const finalStem = `${String(rowNumber).padStart(padWidth, '0')}_${nameSlug}_Resume`;
+    console.log(c.cyan(`  → generating PDF (${finalStem}.pdf)...`));
+    const pdfResult = await runPdf(evalResult.reportPath, runFolder, finalStem);
 
     if (!pdfResult.ok) {
       row.status = 'report_only';
@@ -137,20 +152,15 @@ async function main() {
     appendRow(summaryPath, row);
   }
 
-  // 4. Rename PDFs with Excel row number prefix + generic owner-centric name.
-  // Files get renamed from "Sayari_AI-Engineer_DATE.pdf" to
-  // "18_Rajesh-Racha_Resume.pdf" (if Sayari was in spreadsheet row 18).
-  // Also renames the companion .json and .html files so they stay together.
-  //
-  // The Excel row number is used — not the processing index — so you can open
-  // the spreadsheet, see "row 18 is Sayari", and find the matching file
-  // instantly in Finder's sort-by-name view.
+  // 4. Defensive cleanup pass — PDFs are now generated with their final
+  // "{ROW}_{Name}_Resume" filename directly (so you can apply with PDF #2
+  // while #20 is still being made). This pass exists only as a safety net
+  // for the rare case where a PDF somehow slipped through with an old-style
+  // name (e.g. running a one-off generate-pdf.mjs invocation manually).
+  // It's idempotent — if the file is already named correctly, it's a no-op.
   if (rosterRows.length > 0) {
-    const profile = readYaml(paths.profile) || {};
-    const ownerName = profile.name || profile.candidate?.full_name || 'Resume';
     prefixPdfsByExcelRow(rosterRows, runFolder, ownerName);
-    // summary.csv was written with the ORIGINAL (unprefixed) filenames. Rewrite
-    // it now that names have changed so the CSV stays accurate.
+    // summary.csv may need refreshing if anything was actually renamed.
     rewriteSummaryCsv(summaryPath, rosterRows);
   }
 
@@ -523,15 +533,21 @@ function runEvaluate(url, reportsDir) {
 }
 
 /**
- * Run generate-pdf.mjs on a report, routing the PDF into `outputDir`.
+ * Run generate-pdf.mjs on a report, routing the PDF into `outputDir` and
+ * naming it with `outName` (the stem — no extension). The PDF will be
+ * written as `{outDir}/{outName}.pdf` and lands with that final name
+ * immediately, so no post-loop rename pass is needed.
+ *
  * Returns { ok, pdfPath, reason }.
  */
-function runPdf(reportPath, outputDir) {
+function runPdf(reportPath, outputDir, outName) {
   return new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
     const env = { ...process.env, OUTPUT_DIR: outputDir };
-    const child = spawn(process.execPath, ['scripts/generate-pdf.mjs', '--report', reportPath], {
+    const cmdArgs = ['scripts/generate-pdf.mjs', '--report', reportPath];
+    if (outName) cmdArgs.push('--out-name', outName);
+    const child = spawn(process.execPath, cmdArgs, {
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });

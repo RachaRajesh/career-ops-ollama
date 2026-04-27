@@ -48,7 +48,11 @@ async function main() {
   const resume = await tailorResume({ cv, profile, report, targetCompany: company, targetRole: role });
 
   ensureDir(paths.output);
-  const stem = jobFilename(company, role);
+  // Allow caller to override the filename stem via --out-name flag.
+  // Used by process-excel.mjs to write directly with the final
+  // "{ROW}_{Name}_Resume" filename, so PDFs are immediately usable as
+  // they're generated (no rename step at the end of the run).
+  const stem = args.flags['out-name'] || jobFilename(company, role);
 
   // Save the structured JSON too — useful for debugging and for users who
   // want to manually polish the data before re-rendering.
