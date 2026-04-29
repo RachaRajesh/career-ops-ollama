@@ -25,6 +25,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import readline from 'node:readline';
 import { spawn } from 'node:child_process';
 import ExcelJS from 'exceljs';
 import 'dotenv/config';
@@ -54,12 +55,49 @@ async function main() {
   }
   console.log(c.dim(`  URLs:   ${urls.length}`));
 
-  // 2. Create output folder named after the Excel file + timestamp
+  // 2. Create OR resume an output folder for this Excel.
+  // The folder name is derived from the Excel stem + timestamp. To support
+  // resume, we look for any existing folder named "{stem}_*" in output/ —
+  // if one exists, we offer to resume it instead of starting fresh.
   const stem = path.basename(filePath).replace(/\.[^.]+$/, '');   // "Ai_Engineer_1.xlsx" → "Ai_Engineer_1"
-  const now = new Date();
-  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
-  const runFolderName = `${stem}_${stamp}`;
-  const runFolder = path.join(paths.output, runFolderName);
+  const explicitResume = args.flags.resume;   // user can pass --resume FOLDER
+
+  let runFolder;
+  if (explicitResume) {
+    // User explicitly named a folder to resume
+    if (!fs.existsSync(explicitResume)) {
+      console.error(c.red(`  --resume folder not found: ${explicitResume}`));
+      process.exit(1);
+    }
+    runFolder = explicitResume;
+    console.log(c.dim(`  resume: ${runFolder}/ (explicit --resume)`));
+  } else {
+    // Look for existing run folders matching this Excel name
+    const candidates = findExistingRunFolders(stem);
+    if (candidates.length > 0) {
+      // Most-recent first
+      const newest = candidates[0];
+      const counts = countDoneInFolder(newest);
+      console.log('');
+      console.log(c.yellow(`  ⚠ Found an existing run folder for this Excel:`));
+      console.log(c.dim(`    ${newest}/`));
+      console.log(c.dim(`    Already done: ${counts.done} PDFs (out of ${urls.length} URLs)`));
+      console.log('');
+      const choice = (await prompt(c.bold(`  [R]esume that folder, [N]ew folder, or [Q]uit? [R/n/q] › `))).toLowerCase().trim();
+      if (choice === 'q') { console.log(c.dim('  Goodbye.')); process.exit(0); }
+      if (choice === '' || choice === 'r' || choice === 'y') {
+        runFolder = newest;
+        console.log(c.green(`  → resuming ${path.basename(runFolder)}`));
+      } else {
+        const stamp = makeTimestamp();
+        runFolder = path.join(paths.output, `${stem}_${stamp}`);
+        console.log(c.dim(`  → starting fresh: ${path.basename(runFolder)}`));
+      }
+    } else {
+      const stamp = makeTimestamp();
+      runFolder = path.join(paths.output, `${stem}_${stamp}`);
+    }
+  }
   ensureDir(runFolder);
 
   // Reports go into a sub-folder so the main run folder stays tidy with PDFs at top
@@ -70,13 +108,27 @@ async function main() {
   console.log('');
 
   // 3. Per-URL: evaluate, then generate PDF. Write summary.csv row at each step.
+  // On resume: don't overwrite — append to the existing summary file.
   const summaryPath = path.join(runFolder, 'summary.csv');
-  fs.writeFileSync(summaryPath, csvLine([
-    'row', 'excel_row', 'url', 'status', 'company', 'role', 'score', 'report_file', 'pdf_file', 'notes',
-  ]) + '\n');
+  if (!fs.existsSync(summaryPath)) {
+    fs.writeFileSync(summaryPath, csvLine([
+      'row', 'excel_row', 'url', 'status', 'company', 'role', 'score', 'report_file', 'pdf_file', 'notes',
+    ]) + '\n');
+  }
 
   const stats = { ok: 0, partial: 0, failed: 0 };
   const rosterRows = []; // rows that got a PDF — written to Excel at the end
+
+  // On resume: preload rosterRows from existing summary.csv so the final
+  // roster.xlsx includes jobs processed in PRIOR sessions, not just this one.
+  // We read the CSV, keep only rows with status=ok and a real PDF file,
+  // and put them in rosterRows. This way roster.xlsx is complete even if
+  // the user resumes 3+ times across days.
+  const preloaded = preloadResumedRows(summaryPath);
+  if (preloaded.length > 0) {
+    rosterRows.push(...preloaded);
+    console.log(c.dim(`  resumed: ${preloaded.length} jobs already done in prior session(s)`));
+  }
 
   // Pre-compute the owner name slug + the zero-pad width used for row prefixes.
   // Doing this once upfront lets us pass the final filename to generate-pdf.mjs
@@ -89,9 +141,39 @@ async function main() {
   const maxRowNum = Math.max(...urls.map((u) => u.rowNumber || 0), 1);
   const padWidth = Math.max(2, String(maxRowNum).length);
 
+  // Set up pause-key listener: 'p' to pause after current job, 'r' to resume,
+  // 'q' to quit cleanly. State lives in `runState` so the keypress handler
+  // and the loop can communicate without globals leaking into helpers.
+  const runState = { paused: false, quit: false };
+  const stopKeys = setupPauseKeys(runState);
+
+  console.log(c.dim('  Controls: press [p] to pause after current job, [r] to resume, [q] to quit cleanly'));
+  console.log('');
+
   for (let i = 0; i < urls.length; i++) {
     const { url, rowNumber } = urls[i];
     const idx = i + 1;
+
+    // Skip rows that already have a PDF in the output folder. This is what
+    // makes resume work — we just look at what's on disk.
+    const expectedStem = `${String(rowNumber).padStart(padWidth, '0')}_${nameSlug}_Resume`;
+    const expectedPdf = path.join(runFolder, expectedStem + '.pdf');
+    if (fs.existsSync(expectedPdf)) {
+      console.log(c.dim(`─── [${idx}/${urls.length}]  Excel row ${rowNumber}  → already done, skipping (${expectedStem}.pdf)`));
+      continue;
+    }
+
+    // Honor a pause request from the user (pressed 'p'). We block here,
+    // not mid-evaluation, so we never abandon a half-done LLM call.
+    while (runState.paused && !runState.quit) {
+      console.log(c.yellow(`\n⏸  PAUSED. Press [r] to resume or [q] to quit cleanly.\n`));
+      await waitForResumeOrQuit(runState);
+    }
+    if (runState.quit) {
+      console.log(c.yellow(`\n  Quit requested — stopping at row ${rowNumber}. Re-run with the same Excel to resume from here.`));
+      break;
+    }
+
     console.log(c.bold(c.cyan(`─── [${idx}/${urls.length}]  Excel row ${rowNumber} ───`)));
     console.log(c.dim(`  ${truncate(url, 80)}`));
 
@@ -151,6 +233,9 @@ async function main() {
     console.log(c.green(`      ✓ PDF: ${row.pdf_file}`));
     appendRow(summaryPath, row);
   }
+
+  // Restore terminal — clean up the pause-key listener
+  stopKeys();
 
   // 4. Defensive cleanup pass — PDFs are now generated with their final
   // "{ROW}_{Name}_Resume" filename directly (so you can apply with PDF #2
@@ -611,7 +696,174 @@ function csvLine(cells) {
   }).join(',');
 }
 
+/**
+ * On resume: read existing summary.csv and return the rows that were
+ * successfully processed in prior session(s). Used to seed rosterRows so
+ * the final roster.xlsx + cleanup pass include all completed work, not
+ * just what the current session generated.
+ *
+ * Only rows with status=ok and a real pdf_file are returned. Failed/partial
+ * rows are left to be re-processed (the file-existence skip in the main
+ * loop will handle the de-dup).
+ */
+function preloadResumedRows(summaryPath) {
+  if (!fs.existsSync(summaryPath)) return [];
+  try {
+    const lines = fs.readFileSync(summaryPath, 'utf8').split('\n').filter(Boolean);
+    if (lines.length < 2) return [];
+    // skip header
+    const out = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols = parseCsvRow(lines[i]);
+      // Header order: row, excel_row, url, status, company, role, score, report_file, pdf_file, notes
+      if (cols.length < 9) continue;
+      const status = cols[3];
+      const pdfFile = cols[8];
+      if (status !== 'ok' || !pdfFile) continue;
+      out.push({
+        row: parseInt(cols[0], 10) || 0,
+        excel_row: parseInt(cols[1], 10) || 0,
+        url: cols[2],
+        status,
+        company: cols[4],
+        role: cols[5],
+        score: cols[6],
+        report_file: cols[7],
+        pdf_file: pdfFile,
+        notes: cols[9] || '',
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 function pad(n) { return String(n).padStart(2, '0'); }
+
+/** Build the standard YYYY-MM-DD_HH-MM stamp used for new run folders. */
+function makeTimestamp() {
+  const now = new Date();
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
+}
+
+/**
+ * Find existing run folders for a given Excel stem, sorted newest first.
+ * Looks in paths.output for directories named "{stem}_*".
+ * Returns full paths.
+ */
+function findExistingRunFolders(stem) {
+  if (!fs.existsSync(paths.output)) return [];
+  const entries = fs.readdirSync(paths.output, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .filter((e) => e.name.startsWith(stem + '_'))
+    .map((e) => path.join(paths.output, e.name));
+  // Sort by mtime, newest first
+  return entries
+    .map((p) => ({ path: p, mtime: fs.statSync(p).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime)
+    .map((x) => x.path);
+}
+
+/** Count how many `*_Resume.pdf` files are in a folder (for the resume prompt). */
+function countDoneInFolder(folder) {
+  try {
+    const files = fs.readdirSync(folder);
+    const done = files.filter((f) => /^\d+_.*_Resume\.pdf$/i.test(f)).length;
+    return { done };
+  } catch {
+    return { done: 0 };
+  }
+}
+
+/**
+ * Tiny stdin prompter — used for the resume question. We can't import the
+ * project's `prompt()` helper because it's tied to the menu's readline,
+ * but we can do this lightweight version in a few lines.
+ */
+function prompt(question) {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(question, (answer) => { rl.close(); resolve(answer); });
+  });
+}
+
+/**
+ * Set up keypress handling so the user can:
+ *   - press [p] → pause AFTER the current job finishes (not mid-LLM-call)
+ *   - press [r] → resume from a paused state
+ *   - press [q] → quit cleanly (loop breaks; partial work is preserved)
+ *
+ * Returns a cleanup function that restores stdin to normal mode. The
+ * caller MUST invoke it (we do, after the loop) — otherwise the terminal
+ * stays in raw mode and the next prompt won't echo.
+ *
+ * Implementation notes:
+ *   - We use raw mode + 'data' event because that's portable across mac/linux/windows.
+ *     readline's keypress event is more elegant but doesn't work in some shells.
+ *   - SIGINT (Ctrl+C) is preserved by NOT swallowing the \x03 byte.
+ *   - We only mutate `state` — no other side effects.
+ */
+function setupPauseKeys(state) {
+  // Skip if not a TTY (e.g. running in CI/CD or piped output)
+  if (!process.stdin.isTTY) return () => {};
+
+  const wasRaw = process.stdin.isRaw;
+  try {
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+  } catch {
+    // Some environments don't allow raw mode — gracefully skip the feature.
+    return () => {};
+  }
+
+  const onData = (data) => {
+    const ch = data.toString();
+    // Preserve Ctrl+C — don't intercept
+    if (ch === '\x03') {
+      cleanup();
+      process.exit(130);
+      return;
+    }
+    if (ch === 'p' || ch === 'P') {
+      if (!state.paused) {
+        state.paused = true;
+        // The loop won't actually pause until the current job finishes;
+        // it checks state.paused at the TOP of each iteration.
+        process.stdout.write('\n  ⏸  Pause requested — will pause after current job completes.\n');
+      }
+    } else if (ch === 'r' || ch === 'R') {
+      if (state.paused) {
+        state.paused = false;
+        process.stdout.write('\n  ▶  Resuming.\n');
+      }
+    } else if (ch === 'q' || ch === 'Q') {
+      state.quit = true;
+      process.stdout.write('\n  ⏹  Quit requested — will stop after current job completes.\n');
+    }
+  };
+
+  process.stdin.on('data', onData);
+
+  function cleanup() {
+    process.stdin.removeListener('data', onData);
+    try {
+      process.stdin.setRawMode(wasRaw);
+      process.stdin.pause();
+    } catch { /* shrug */ }
+  }
+  return cleanup;
+}
+
+/**
+ * Block until either state.paused becomes false (user pressed 'r') or
+ * state.quit becomes true (user pressed 'q'). Polled at 200ms — cheap.
+ */
+async function waitForResumeOrQuit(state) {
+  while (state.paused && !state.quit) {
+    await new Promise((res) => setTimeout(res, 200));
+  }
+}
 
 function truncate(s, n) {
   s = String(s);
