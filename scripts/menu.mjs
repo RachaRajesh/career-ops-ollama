@@ -340,9 +340,51 @@ async function excelFlow() {
     console.log(c.red(`  File not found: ${file}`));
     return pause();
   }
+
+  // Resume detection in the menu (not in the subprocess) — the subprocess
+  // version had stdin contention bugs where typing "n" was misread as resume.
+  // We figure out the answer here, then pass an explicit flag to the subprocess.
+  const pathMod = await import('node:path');
+  const outputDir = process.env.OUTPUT_DIR || './output';
+  const fileStem = pathMod.basename(file).replace(/\.[^.]+$/, '');
+  let resumeArg = [];
+  if (fs.existsSync(outputDir)) {
+    const candidates = fs.readdirSync(outputDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && e.name.startsWith(fileStem + '_'))
+      .map((e) => ({
+        path: pathMod.join(outputDir, e.name),
+        mtime: fs.statSync(pathMod.join(outputDir, e.name)).mtimeMs,
+      }))
+      .sort((a, b) => b.mtime - a.mtime);
+    if (candidates.length > 0) {
+      const newest = candidates[0].path;
+      const files = fs.readdirSync(newest);
+      const doneCount = files.filter((f) => /^\d+_.*_Resume\.pdf$/i.test(f)).length;
+      console.log('');
+      console.log(c.yellow(`  ⚠ Found an existing run folder for this Excel:`));
+      console.log(c.dim(`    ${newest}/`));
+      console.log(c.dim(`    PDFs already in folder: ${doneCount}`));
+      console.log('');
+      console.log(`    ${c.cyan('[r]')} Resume — pick up where the previous run left off`);
+      console.log(`    ${c.cyan('[n]')} New folder — start a fresh run`);
+      console.log(`    ${c.cyan('[q]')} Quit`);
+      console.log('');
+      const choice = (await ask(c.bold('  Choice [R/n/q] › '))).toLowerCase().trim();
+      if (choice === 'q') return;
+      if (choice === 'n' || choice === 'no' || choice === 'new') {
+        resumeArg = ['--new'];
+        console.log(c.dim(`  → starting fresh, will create new folder`));
+      } else {
+        resumeArg = ['--resume', newest];
+        console.log(c.green(`  → resuming ${pathMod.basename(newest)}`));
+      }
+      console.log('');
+    }
+  }
+
   const go = (await ask(c.bold('  Proceed? [Y/n] › '))).toLowerCase();
   if (go === 'n') return;
-  await run('scripts/process-excel.mjs', ['--file', file]);
+  await run('scripts/process-excel.mjs', ['--file', file, ...resumeArg]);
   await pause();
 }
 

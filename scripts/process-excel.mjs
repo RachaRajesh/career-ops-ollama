@@ -71,27 +71,47 @@ async function main() {
     }
     runFolder = explicitResume;
     console.log(c.dim(`  resume: ${runFolder}/ (explicit --resume)`));
+  } else if (args.flags.new) {
+    // User explicitly asked for a new folder via --new flag (menu can pass this)
+    const stamp = makeTimestamp();
+    runFolder = path.join(paths.output, `${stem}_${stamp}`);
+    console.log(c.dim(`  → starting fresh: ${path.basename(runFolder)} (--new)`));
   } else {
     // Look for existing run folders matching this Excel name
     const candidates = findExistingRunFolders(stem);
     if (candidates.length > 0) {
-      // Most-recent first
       const newest = candidates[0];
       const counts = countDoneInFolder(newest);
       console.log('');
       console.log(c.yellow(`  ⚠ Found an existing run folder for this Excel:`));
       console.log(c.dim(`    ${newest}/`));
-      console.log(c.dim(`    Already done: ${counts.done} PDFs (out of ${urls.length} URLs)`));
+      console.log(c.dim(`    PDFs already in folder: ${counts.done}  (URLs in this Excel: ${urls.length})`));
       console.log('');
-      const choice = (await prompt(c.bold(`  [R]esume that folder, [N]ew folder, or [Q]uit? [R/n/q] › `))).toLowerCase().trim();
-      if (choice === 'q') { console.log(c.dim('  Goodbye.')); process.exit(0); }
-      if (choice === '' || choice === 'r' || choice === 'y') {
-        runFolder = newest;
-        console.log(c.green(`  → resuming ${path.basename(runFolder)}`));
-      } else {
+      // Robust prompt: read raw input, log what we got, and only treat
+      // empty / r / y / yes as resume. Anything else (including n, no, new, q)
+      // creates a new folder OR quits explicitly.
+      const rawAnswer = await prompt(c.bold(`  [R]esume that folder, [N]ew folder, or [Q]uit? [R/n/q] › `));
+      const choice = String(rawAnswer || '').toLowerCase().trim();
+
+      if (choice === 'q' || choice === 'quit' || choice === 'exit') {
+        console.log(c.dim('  Goodbye.'));
+        process.exit(0);
+      }
+      // Explicit "new folder" responses
+      if (choice === 'n' || choice === 'no' || choice === 'new' || choice === 'fresh') {
         const stamp = makeTimestamp();
         runFolder = path.join(paths.output, `${stem}_${stamp}`);
-        console.log(c.dim(`  → starting fresh: ${path.basename(runFolder)}`));
+        console.log(c.green(`  → starting fresh: ${path.basename(runFolder)}`));
+      }
+      // Explicit "resume" responses (R is also default for empty input)
+      else if (choice === '' || choice === 'r' || choice === 'y' || choice === 'yes' || choice === 'resume') {
+        runFolder = newest;
+        console.log(c.green(`  → resuming ${path.basename(runFolder)}`));
+      }
+      // Anything else — be conservative, ask again rather than guessing
+      else {
+        console.log(c.yellow(`  Unrecognized choice "${choice}". Please re-run and answer R, N, or Q.`));
+        process.exit(1);
       }
     } else {
       const stamp = makeTimestamp();
