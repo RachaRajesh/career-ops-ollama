@@ -97,175 +97,262 @@ async function main() {
 // LLM call: ask for structured resume JSON
 
 async function tailorResume({ cv, profile, report, targetCompany, targetRole }) {
+  // ─── PASS 1: Generate the tailored resume in JSON form ────────────────
+  // System prompt encodes the "honest engineer" style: short summary, sparse
+  // metrics with technical context, varied verbs, no LinkedIn buzzwords.
+  // Adapted from the user's plain-text spec into our JSON schema — the rules
+  // apply to bullet/summary CONTENT, the schema dictates the wrapper.
   const system = [
-    'You are tailoring a candidate\'s resume for a specific job. The output is STRUCTURED JSON.',
+    'You are rewriting a resume for a specific job. The output is STRUCTURED JSON.',
+    'Goal: produce a resume that reads like an engineer wrote it, not a recruiting tool —',
+    'while still passing ATS keyword filters.',
     '',
     '═══════════════════════════════════════════════════════════════════════════',
-    'YOUR PRIMARY GOAL: produce a resume that a senior technical recruiter would',
-    'shortlist on the first pass. That means:',
-    '  - Long, detailed, expanded bullets (2-3 lines each, not one-liners)',
-    '  - A rich, multi-sentence professional summary (6-10 sentences)',
-    '  - The actual job title from the JD (NOT a fabricated one)',
-    '  - Tech grounded to the company where the candidate actually used it',
-    '  - ~70% JD keyword overlap, NOT 100% (perfect matches read as AI-generated)',
+    'PART 1 — INTEGRITY (non-negotiable)',
     '═══════════════════════════════════════════════════════════════════════════',
     '',
-    'INTEGRITY RULES — violating these is a serious failure:',
+    '  • NEVER invent companies, titles, dates, projects, certifications, or degrees.',
+    '    Use exactly what the CV says.',
+    '  • NEVER inflate years of experience, team sizes, or impact metrics.',
+    '  • COMPANY-GROUNDED TECH: For each job\'s bullets, only mention technologies that',
+    '    the CV says were used AT THAT specific company. The Skills section may list',
+    '    any tech the CV mentions anywhere; per-job bullets stay grounded to that job.',
+    '  • Never invent a number. If the CV has no metric, do NOT add one.',
+    '  • ROLE TITLE: Use EXACTLY the title provided in the user message. Do not modify,',
+    '    add parentheticals, or invent variations.',
     '',
-    '  R1. NEVER invent companies, titles, dates, projects, certifications, or',
-    '      educational degrees. Use exactly what the CV says.',
+    '═══════════════════════════════════════════════════════════════════════════',
+    'PART 2 — PROFESSIONAL SUMMARY',
+    '═══════════════════════════════════════════════════════════════════════════',
     '',
-    '  R2. NEVER inflate years of experience, team sizes, or impact metrics.',
-    '      If a CV bullet says "improved X by 34%", do not change it to 50%.',
-    '      If a CV bullet has no number, do not invent one.',
+    '  • Maximum 50 words across 3 sentences. Hard cap.',
+    '  • Zero percentages. Zero metrics. Zero numbers except "5 years" (or whatever',
+    '    the actual years count is).',
+    '  • Mention: current role, years of experience, 1-2 specialty areas, what kind',
+    '    of work the candidate is focused on now.',
+    '  • Sound like the candidate is talking to another engineer.',
     '',
-    '  R3. ★ COMPANY-GROUNDED TECHNOLOGY RULE ★',
-    '      For each job\'s bullets, you may ONLY mention technologies that the',
-    '      ORIGINAL CV says were used at THAT specific company.',
+    '═══════════════════════════════════════════════════════════════════════════',
+    'PART 3 — METRICS (credibility filter)',
+    '═══════════════════════════════════════════════════════════════════════════',
     '',
-    '      Example: if the JD wants "AWS" but the candidate\'s UnitedHealth bullets',
-    '      in the original CV only mention SageMaker, do NOT add "AWS" to the',
-    '      UnitedHealth bullets. Keep the bullet saying SageMaker.',
+    '  • Default: ZERO metrics. Add a number ONLY if you can attach concrete',
+    '    technical context (model name, dataset size, methodology that produced it).',
+    '  • Maximum 3 metrics per role TOTAL — across all bullets in that role combined.',
+    '  • DELETE suspiciously round metrics (40%, 50%, 30%, 25%, 20%) unless paired',
+    '    with concrete technical context.',
+    '  • DELETE metrics implying scale the role wouldn\'t realistically have. A hotel',
+    '    chain does NOT process "500K events/sec" — that\'s Netflix scale. Either',
+    '    replace with believable numbers or remove the metric entirely.',
+    '  • When you keep a metric, give it methodology context.',
+    '    BAD:  "reduced latency by 30%"',
+    '    GOOD: "cut p95 latency from ~12s to ~8s on a 50K-document corpus by adding',
+    '          embedding cache and reranker batching"',
+    '  • Never combine two near-perfect metrics in one bullet (e.g. "98% recall AND',
+    '    92% precision"). Pick one.',
     '',
-    '      Example: if the JD wants "Snowflake" and the candidate\'s TCS bullets',
-    '      mention Snowflake, you MAY emphasize Snowflake in TCS bullets. If the',
-    '      candidate\'s Goldman Sachs bullets do NOT mention Snowflake, do NOT add',
-    '      Snowflake to Goldman Sachs bullets.',
+    '═══════════════════════════════════════════════════════════════════════════',
+    'PART 4 — BULLET STRUCTURE',
+    '═══════════════════════════════════════════════════════════════════════════',
     '',
-    '      The Skills section is allowed to mention any tech the CV lists anywhere.',
-    '      But per-job bullets MUST stay grounded to that job\'s actual stack.',
+    '  • Stop the "verb + tool list + percentage" pattern. Vary it.',
+    '  • Mix in bullets that describe architecture decisions, trade-offs, or',
+    '    debugging — without numbers.',
+    '  • Vary sentence length. Some short. Some longer with a clause that explains',
+    '    WHY a decision was made.',
+    '  • At least 1 bullet per role MUST describe a specific technical trade-off',
+    '    or failure mode addressed. Example: "switched from pure dense retrieval',
+    '    to hybrid BM25+dense after seeing recall drop on acronym-heavy queries."',
+    '  • Don\'t list every tool used in every bullet. Mention tools when they',
+    '    matter to the story.',
+    '  • Do not start consecutive bullets with the same verb.',
+    '  • 4-6 bullets per role maximum.',
     '',
-    '  R4. ★ EXPAND BULLETS — DO NOT SHORTEN THEM ★',
-    '      Each bullet should be 2-3 lines of substantive content, weaving',
-    '      together: what was built, how it was built (technologies, methods),',
-    '      and the outcome or scope (where known from the CV). Match the depth',
-    '      of the candidate\'s most detailed bullets, NOT the shortest ones.',
+    '═══════════════════════════════════════════════════════════════════════════',
+    'PART 5 — SKILLS (modernize for 2026)',
+    '═══════════════════════════════════════════════════════════════════════════',
     '',
-    '      WRONG (too short, generic):',
-    '        "Built RAG pipelines using LangChain and Pinecone."',
+    '  • REMOVE generic activity-words like "RAG Pipelines" and "Prompt Engineering"',
+    '    from skills — these are activities, not skills. Replace with actual tools.',
+    '  • If the CV mentions any of these, INCLUDE them: LangGraph, LlamaIndex, DSPy,',
+    '    Ragas, DeepEval, Langfuse, Phoenix, Pydantic, instructor, vLLM, LiteLLM,',
+    '    structured outputs, function calling, OpenAI text-embedding-3, BGE',
+    '    embeddings, Cohere rerank, CrossEncoder reranking.',
+    '  • Do NOT invent skills the CV doesn\'t mention.',
+    '  • If the CV shows frontend work, include React, Next.js, TypeScript, Tailwind.',
+    '  • Group skills by category. Suggested groups:',
+    '      LLM & GenAI / ML & Data / MLOps & Cloud / Backend & APIs / Frontend / Streaming',
+    '    Keep each group to one comma-separated line.',
     '',
-    '      RIGHT (expanded, detailed):',
-    '        "Architected and deployed production RAG pipelines using LangChain,',
-    '         FAISS, Pinecone, and ChromaDB, integrating GPT-4 and LLaMA2 to',
-    '         deliver knowledge-grounded responses across enterprise document',
-    '         repositories with hybrid retrieval and reranking."',
+    '═══════════════════════════════════════════════════════════════════════════',
+    'PART 6 — TONE',
+    '═══════════════════════════════════════════════════════════════════════════',
     '',
-    '      You may keep all the candidate\'s original bullets and EXPAND them with',
-    '      adjacent context already present elsewhere in their CV. Do NOT invent',
-    '      new content. Do NOT combine multiple bullets into one (it loses signal).',
+    '  BANNED PHRASES — do not use any:',
+    '    "results-driven", "demonstrated expertise", "proven ability",',
+    '    "proven track record", "cross-functional", "scalable solutions",',
+    '    "end-to-end", "business-aligned", "leveraging", "spearheaded",',
+    '    "robust", "seamlessly", "synergy", "passionate", "deep expertise",',
+    '    "extensive experience", "strong focus on"',
     '',
-    '  R5. ★ FULL PROFESSIONAL SUMMARY ★',
-    '      The summary must be 6-10 sentences. Structure:',
-    '        - Sentence 1: positioning (role, years, domains)',
-    '        - Sentences 2-7: 2-3 expanded accomplishment statements that pull',
-    '          from the candidate\'s actual experience, with technologies named',
-    '        - Final sentence: cross-functional or business-impact closer',
-    '      Match the depth and tone of the candidate\'s richest CV writing.',
-    '      Do NOT write 2-3 generic sentences. Do NOT parrot the JD verbatim.',
+    '  • It is OK for a bullet to describe work that did NOT have a measurable',
+    '    improvement — real engineering includes infrastructure, refactors, and',
+    '    migrations that don\'t generate clean percentages.',
+    '  • Plain technical language, not marketing language.',
     '',
-    '  R6. ROLE TITLE: Use EXACTLY the role title provided in the user message',
-    '      under "EXACT ROLE TITLE TO USE". Do NOT modify it. Do NOT add framework',
-    '      names or technologies in parentheses. Do NOT invent variations.',
+    '═══════════════════════════════════════════════════════════════════════════',
+    'PART 7 — ATS KEYWORDS',
+    '═══════════════════════════════════════════════════════════════════════════',
     '',
-    '  R7. WRITE LIKE A HUMAN. Avoid AI-tells:',
-    '      - Every bullet starting with "Spearheaded" / "Leveraged" / "Architected"',
-    '      - Symmetric three-clause structures repeated bullet after bullet',
-    '      - Buzzword density without specifics',
-    '      Mix verb choices. Vary sentence rhythm. Let bullets breathe naturally.',
+    '  • If a target JD context is provided in the user message, mirror its key',
+    '    technical terms naturally inside the bullets — do NOT stuff them in a',
+    '    separate keyword section.',
+    '  • Match terminology when possible (if JD says "LLM evaluation", use that',
+    '    phrase, not "model assessment"). But: don\'t repeat any single JD term',
+    '    more than twice across the resume — repetition reads as AI-generated.',
     '',
-    '  R8. SELF-CHECK BEFORE OUTPUT: After drafting, mentally review:',
-    '      - Does the role_target match the JD title exactly? (No fabrications)',
-    '      - Are bullets 2-3 lines each, not one-liners?',
-    '      - Is the summary 6+ sentences with named technologies?',
-    '      - Does every per-job tech actually appear at that job in the CV?',
-    '      - Would a senior recruiter shortlist this on first read?',
-    '      If any answer is no, fix it before producing JSON.',
-    '',
-    'Output ONLY valid JSON, no markdown fences, no commentary, matching this shape:',
+    '═══════════════════════════════════════════════════════════════════════════',
+    'OUTPUT — JSON ONLY, no markdown fences, no commentary',
+    '═══════════════════════════════════════════════════════════════════════════',
     '',
     '  {',
     '    "name": "Full Name",',
-    '    "role_target": "EXACT role title from the JD — do not modify",',
+    '    "role_target": "EXACT role title from the user message",',
     '    "contact": {',
-    '      "location": "City, State, Country",',
-    '      "email": "you@example.com",',
-    '      "phone": "+1 555 555 5555",',
-    '      "linkedin": "linkedin.com/in/handle",',
-    '      "github": "github.com/handle",',
-    '      "website": ""',
+    '      "location": "...", "email": "...", "phone": "...",',
+    '      "linkedin": "...", "github": "...", "website": ""',
     '    },',
-    '    "summary": "6-10 sentences, expanded and detailed, see R5",',
+    '    "summary": "≤50 words, 3 sentences, zero metrics — see PART 2",',
     '    "experience": [',
     '      {',
     '        "title":   "Job Title (exactly as in CV)",',
     '        "company": "Company Name (exactly as in CV)",',
     '        "location": "City, State (exactly as in CV)",',
     '        "dates":   "Feb 2025 – Present (exactly as in CV)",',
-    '        "bullets": ["expanded 2-3 line bullet 1", "expanded 2-3 line bullet 2", ...]',
+    '        "bullets": ["bullet 1", "bullet 2", ...]    // 4-6 bullets, see PART 4',
     '      }',
     '    ],',
     '    "projects": [',
-    '      { "name": "Project Name", "link": "github.com/...", "description": "1-2 sentence description (from CV)" }',
+    '      { "name": "...", "link": "...", "description": "1-2 sentences from CV" }',
     '    ],',
     '    "skills": [',
-    '      { "label": "AI / ML",          "items": ["..."] },',
-    '      { "label": "MLOps & Cloud",    "items": ["..."] },',
-    '      { "label": "Data & Streaming", "items": ["..."] }',
-    '      // Group into 3-5 buckets. Order buckets by JD relevance.',
-    '      // Skills section may mention any tech the CV lists anywhere.',
-    '      // Do NOT add a tech the CV doesn\'t mention at all.',
+    '      { "label": "LLM & GenAI", "items": ["..."] },',
+    '      { "label": "ML & Data",   "items": ["..."] },',
+    '      { "label": "MLOps & Cloud", "items": ["..."] }',
+    '      // 3-6 groups, see PART 5',
     '    ],',
-    '    "education": [',
-    '      { "degree": "...", "school": "...", "location": "...", "dates": "" }',
-    '    ],',
-    '    "certifications": [',
-    '      { "name": "...", "issuer": "..." }',
-    '    ]',
+    '    "education": [{ "degree": "...", "school": "...", "location": "...", "dates": "" }],',
+    '    "certifications": [{ "name": "...", "issuer": "..." }]',
     '  }',
+    '',
+    'CRITICAL — last reminder before output:',
+    '  Banned words: "leveraging", "spearheaded", "results-driven",',
+    '  "cross-functional", "robust", "seamlessly". Scan your output. If any of',
+    '  these appear, REWRITE THE BULLET BEFORE RETURNING JSON.',
   ].join('\n');
 
   const user = [
     `═══ TARGET JOB ═══`,
     `Company: ${targetCompany}`,
     `EXACT ROLE TITLE TO USE: ${targetRole}`,
-    `(Put this EXACT string in the "role_target" field. Do not modify, paraphrase,`,
-    `or add parentheticals like "(Python, AWS)". Use it as-is.)`,
+    `(Put this EXACT string in role_target. Do not modify or add parentheticals.)`,
     '',
-    `═══ EVALUATION REPORT ═══`,
-    `(Use this to identify which of the candidate's existing experiences to emphasize.`,
-    `DO NOT use this to invent new experiences.)`,
-    '',
+    `═══ EVALUATION REPORT (use to identify what to emphasize, not invent) ═══`,
     report,
     '',
     `═══ CANDIDATE PROFILE ═══`,
     JSON.stringify(profile, null, 2),
     '',
-    `═══ CANDIDATE CV (THIS IS THE ONLY SOURCE OF TRUTH FOR EXPERIENCE) ═══`,
-    `(Markdown formatting is for input only — do not preserve ** or ## in your JSON output.`,
-    `Every bullet in your output must trace back to a bullet or sentence in this CV.`,
-    `EXPAND each bullet to 2-3 detailed lines using context from elsewhere in the CV.)`,
-    '',
+    `═══ CANDIDATE CV (sole source of truth for experience) ═══`,
+    `(Markdown is for input only — do not preserve ** or ## in JSON output.)`,
     cv,
-    '',
-    `═══ FINAL CHECK BEFORE OUTPUTTING JSON ═══`,
-    `1. role_target = the EXACT title given above (no parentheticals, no rewrites)`,
-    `2. summary = 6-10 sentences with named technologies, not 2-3 generic ones`,
-    `3. Each bullet = 2-3 lines of substantive content, not one-liners`,
-    `4. Per-job tech only mentions what the CV says was used at THAT company`,
-    `5. ~70% JD-keyword overlap — perfect matches read as AI-generated`,
-    `6. No "Spearheaded/Leveraged/Architected" stacking — vary your verbs`,
-    ``,
-    `If the resume doesn't pass these checks, fix it before producing JSON.`,
   ].join('\n');
 
   const out = await chatJSON({ system, user, temperature: 0.4 });
   const normalized = normalizeResume(out, profile, { forcedRoleTitle: targetRole });
 
-  // After initial generation, expand any too-short bullets (one-liners read
-  // as AI-generated and we promised the user 2-3 line bullets). This is the
-  // "self-healing" pass that handles models that ignore prompt instructions.
-  await expandShortBullets(normalized, { cv, profile });
+  // ─── PASS 2: Critique-and-fix ─────────────────────────────────────────
+  // Local models routinely violate global constraints (banned phrases, metric
+  // limits) on the first pass. Single-pass self-checks don't actually verify
+  // anything — the model just claims it checked. A SECOND call that takes the
+  // first output as input and grades it against the rules catches real issues.
+  // This costs one extra LLM call per resume; worth it for cleaner output.
+  await critiqueAndFix(normalized, { targetCompany, targetRole, cv });
+
   return normalized;
+}
+
+/**
+ * Second-pass critique. Takes the resume produced in pass 1, runs it against
+ * the rules, and rewrites any violating bullets. This is where the "self-check"
+ * actually happens — single-pass self-check is theater on local models.
+ *
+ * Mutates the resume in-place. If the critique fails or returns nothing usable,
+ * silently no-ops (we'd rather ship the pass-1 output than crash).
+ */
+async function critiqueAndFix(resume, { targetCompany, targetRole, cv }) {
+  // Quick pre-check: is there anything obvious to fix? If not, skip the LLM call.
+  const allBulletText = (resume.experience || [])
+    .flatMap((j) => j.bullets || [])
+    .join(' ');
+  const summary = resume.summary || '';
+  const banned = /\b(results[- ]driven|demonstrated expertise|proven ability|proven track record|cross[- ]functional|scalable solutions|end[- ]to[- ]end|business[- ]aligned|leveraging|spearheaded|robust|seamlessly|synergy|passionate|deep expertise|extensive experience|strong focus on)\b/i;
+  const hasBanned = banned.test(allBulletText) || banned.test(summary);
+  const summaryTooLong = summary.split(/\s+/).filter(Boolean).length > 55;
+  // Rough metric-density check: count digits-followed-by-% across bullets
+  const tooManyMetrics = (resume.experience || []).some((j) => {
+    const numericClaims = (j.bullets || []).join(' ').match(/\d+\s?%|\d+x\b|\d+\s?ms\b|p\d{2,3}\b/gi) || [];
+    return numericClaims.length > 3;
+  });
+
+  if (!hasBanned && !summaryTooLong && !tooManyMetrics) {
+    // First pass passed all the cheap checks; skip the expensive critique call.
+    return;
+  }
+
+  const system = [
+    'You are reviewing a draft resume against strict style rules and rewriting',
+    'sections that violate them. Output the SAME JSON shape you receive, with',
+    'violations fixed. Do not change facts, dates, companies, or schemas.',
+    '',
+    'RULES TO ENFORCE:',
+    '  1. Banned phrases (rewrite bullets to remove these):',
+    '     "leveraging", "spearheaded", "results-driven", "cross-functional",',
+    '     "robust", "seamlessly", "synergy", "demonstrated expertise",',
+    '     "proven ability", "proven track record", "scalable solutions",',
+    '     "end-to-end", "business-aligned", "passionate", "deep expertise",',
+    '     "extensive experience", "strong focus on"',
+    '  2. Summary must be ≤50 words across 3 sentences with zero metrics.',
+    '     If the current summary is longer, REWRITE it shorter.',
+    '  3. Each role: maximum 3 metrics total. If a role has more, REMOVE the',
+    '     least-defensible metrics (especially round numbers like 30%, 40%).',
+    '  4. Do not invent new content. Only rewrite or remove existing content.',
+    '',
+    'Output ONLY valid JSON, same schema as input.',
+  ].join('\n');
+
+  const user = [
+    `═══ DRAFT RESUME (rewrite violations, keep everything else) ═══`,
+    JSON.stringify(resume, null, 2),
+  ].join('\n');
+
+  try {
+    const fixed = await chatJSON({ system, user, temperature: 0.3 });
+    if (fixed && typeof fixed === 'object') {
+      // Apply only safe fields back — don't accept changes to identity/dates/schools
+      if (typeof fixed.summary === 'string') resume.summary = fixed.summary;
+      if (Array.isArray(fixed.experience)) {
+        for (let i = 0; i < resume.experience.length && i < fixed.experience.length; i++) {
+          if (Array.isArray(fixed.experience[i]?.bullets)) {
+            resume.experience[i].bullets = fixed.experience[i].bullets;
+          }
+        }
+      }
+      if (Array.isArray(fixed.skills)) resume.skills = fixed.skills;
+    }
+  } catch {
+    // Critique call failed — keep the pass-1 output. Better than crashing.
+  }
 }
 
 /**
@@ -427,6 +514,16 @@ function cleanRoleTitle(s) {
  *
  * This is the "self-healing" pass — it compensates for local models that
  * understand the prompt but don't follow the length instruction reliably.
+ */
+/**
+ * DEPRECATED — kept for reference, not currently called.
+ *
+ * Previously this expanded short bullets to 2-3 lines after generation. The
+ * current style philosophy (per the resume rewrite spec) explicitly prefers
+ * varied bullet lengths — "some short, some longer" — so forcing every short
+ * bullet to be longer would undo what the main prompt is trying to achieve.
+ *
+ * If you want to re-enable, call from tailorResume() AFTER critiqueAndFix.
  */
 async function expandShortBullets(resume, { cv, profile }) {
   const SHORT_THRESHOLD = 150;  // chars — bullets shorter than this get expanded
