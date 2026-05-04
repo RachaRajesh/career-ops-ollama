@@ -232,9 +232,6 @@ async function tailorResume({ cv, profile, report, targetCompany, targetRole }) 
     '        "bullets": ["bullet 1", "bullet 2", ...]    // 4-6 bullets, see PART 4',
     '      }',
     '    ],',
-    '    "projects": [',
-    '      { "name": "...", "link": "...", "description": "1-2 sentences from CV" }',
-    '    ],',
     '    "skills": [',
     '      { "label": "LLM & GenAI", "items": ["..."] },',
     '      { "label": "ML & Data",   "items": ["..."] },',
@@ -633,32 +630,23 @@ function renderTemplate(tpl, r) {
     </section>
   `;
 
-  // Experience — single column, title bold, company · location · dates on subline
+  // Experience — ORG layout: dates row in small-caps gray, title row bold uppercase,
+  // company in italic. Bullets render as paragraph blocks (no list markers).
   const experienceBlock = r.experience.map((j) => {
-    const metaParts = [j.company, j.location].filter(Boolean).join(', ');
-    const metaLine = j.dates
-      ? `${esc(metaParts)} <span class="dates">· ${esc(j.dates)}</span>`
-      : esc(metaParts);
+    const companyLine = [j.company, j.location].filter(Boolean).join(', ');
     return `<div class="job">
-      <div class="job-title">${esc(j.title)}</div>
-      <div class="job-meta-line">${metaLine}</div>
+      <div class="job-header">
+        ${j.dates ? `<div class="job-dates">${esc(j.dates)}</div>` : ''}
+        <div class="job-title">${esc(j.title)}</div>
+        ${companyLine ? `<div class="job-company">${esc(companyLine)}</div>` : ''}
+      </div>
       ${j.bullets.length ? `<ul class="bullets">${j.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
     </div>`;
   }).join('\n');
 
-  // Projects — section omitted if none
-  const projectsSection = r.projects.length === 0 ? '' : `
-    <section>
-      <h2>Projects</h2>
-      ${r.projects.map((p) =>
-        `<div class="project">
-          <div class="project-name">${esc(p.name)}</div>
-          ${p.link ? `<div class="project-link">${esc(p.link)}</div>` : ''}
-          <div class="project-desc">${esc(p.description)}</div>
-        </div>`
-      ).join('\n')}
-    </section>
-  `;
+  // Projects section removed — template no longer renders it.
+  // GitHub link is in the contact row at the top instead, so recruiters
+  // can still see code without a dedicated section eating real estate.
 
   return tpl
     .replaceAll('{{NAME}}', esc(r.name))
@@ -668,8 +656,7 @@ function renderTemplate(tpl, r) {
     .replaceAll('{{SKILLS_PARAGRAPH}}', skillsParagraph)
     .replaceAll('{{EDUCATION_BLOCK}}', educationBlock)
     .replaceAll('{{CERTS_SECTION}}', certsSection)
-    .replaceAll('{{EXPERIENCE_BLOCK}}', experienceBlock)
-    .replaceAll('{{PROJECTS_SECTION}}', projectsSection);
+    .replaceAll('{{EXPERIENCE_BLOCK}}', experienceBlock);
 }
 
 main().catch((err) => {
