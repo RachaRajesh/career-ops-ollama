@@ -94,6 +94,7 @@ const MAIN_MENU = [
   { key: '3', label: 'Batch-evaluate a folder',            desc: 'Run every .txt/.md in ./jds through the evaluator',     run: batchFolderFlow },
   { key: '4', label: 'Scan job portals',                   desc: 'Crawl configured companies for new listings',           run: scanFlow },
   { key: '5', label: 'Generate tailored PDF(s)',           desc: 'Single report → PDF, or bulk-generate for many reports', run: pdfFlow },
+  { key: 'c', label: 'Generate cover letter for one job',  desc: 'Auto-research company + write a short cover letter (no AI slop)', run: coverFlow },
   { key: '6', label: 'Auto-fill application(s)',           desc: 'Single URL, or bulk-apply from a roster with auto-attached PDFs', run: applyFlow },
   { key: 'e', label: 'Process Excel/CSV of URLs',           desc: 'Batch-evaluate + PDF every URL in a spreadsheet',       run: excelFlow },
   { key: '7', label: 'View tracker (your pipeline)',       desc: 'Pretty-print every job you\'ve evaluated',              run: trackerFlow },
@@ -261,6 +262,49 @@ async function pdfFlow() {
   if (go === 'n') return;
 
   await run('scripts/bulk-pdf.mjs', bulkArgs);
+  return pause();
+}
+
+async function coverFlow() {
+  clear(); banner();
+  console.log(c.bold('  ✉️  Generate cover letter for one job')); hr();
+  console.log(c.dim('  Pick a report and the script will:'));
+  console.log(c.dim('    1. Try to scrape the company\'s public pages for specifics'));
+  console.log(c.dim('    2. Generate a short, honest cover letter (3 paragraphs, ≤250 words)'));
+  console.log(c.dim('    3. Save as PDF + JSON in the report\'s folder'));
+  console.log('');
+  console.log(c.yellow('  ⚠ Honest expectations:'));
+  console.log(c.dim('    • If the script can\'t find specifics about the team, it produces a'));
+  console.log(c.dim('      generic-but-honest letter — no fabricated facts about the company.'));
+  console.log(c.dim('    • For roles you really care about, open the PDF and add 1-2 specific'));
+  console.log(c.dim('      lines (e.g. "I read X\'s post on Y") before sending. That\'s what'));
+  console.log(c.dim('      actually gets you interviews; auto-generation alone gets you ~10%.'));
+  console.log('');
+
+  const reportsDir = process.env.REPORTS_DIR || './reports';
+  if (!fs.existsSync(reportsDir)) {
+    console.log(c.red(`  No reports folder at ${reportsDir}/`));
+    return pause();
+  }
+  const reports = fs.readdirSync(reportsDir)
+    .filter((f) => f.endsWith('.md'))
+    .sort((a, b) => fs.statSync(path.join(reportsDir, b)).mtimeMs - fs.statSync(path.join(reportsDir, a)).mtimeMs);
+  if (reports.length === 0) {
+    console.log(c.yellow('  No reports yet. Run option 1 (evaluate one URL) or option e (Excel) first.'));
+    return pause();
+  }
+
+  console.log(c.dim(`  Pick a report (newest first):\n`));
+  const show = reports.slice(0, 15);
+  show.forEach((r, i) => console.log(`    ${c.cyan(`[${i + 1}]`)} ${r}`));
+  if (reports.length > 15) console.log(c.dim(`    (${reports.length - 15} older hidden)`));
+  console.log('');
+
+  const pick = await ask(c.bold('  Number › '));
+  const idx = parseInt(pick, 10) - 1;
+  if (isNaN(idx) || !show[idx]) { console.log(c.red('  Invalid.')); return pause(); }
+
+  await run('scripts/generate-cover.mjs', ['--report', path.join(reportsDir, show[idx])]);
   return pause();
 }
 

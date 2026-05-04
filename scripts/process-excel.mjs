@@ -252,6 +252,21 @@ async function main() {
     rosterRows.push(row);
     console.log(c.green(`      ✓ PDF: ${row.pdf_file}`));
     appendRow(summaryPath, row);
+
+    // 3c. Generate the matching cover letter (same row prefix, _CoverLetter suffix).
+    // Skip if SKIP_COVER_LETTERS=true — saves 30-60s per job for users who don't
+    // want them. The cover letter does its own scraping → LLM call, so a failure
+    // here doesn't block the resume PDF that's already saved.
+    if (process.env.SKIP_COVER_LETTERS !== 'true') {
+      const coverStem = `${String(rowNumber).padStart(padWidth, '0')}_${nameSlug}_CoverLetter`;
+      console.log(c.cyan(`  → generating cover letter (${coverStem}.pdf)...`));
+      const coverResult = await runCoverLetter(evalResult.reportPath, runFolder, coverStem);
+      if (coverResult.ok) {
+        console.log(c.green(`      ✓ cover: ${coverStem}.pdf`));
+      } else {
+        console.log(c.yellow(`      ⚠ cover letter failed: ${coverResult.reason} (resume saved fine)`));
+      }
+    }
   }
 
   // Restore terminal — clean up the pause-key listener
@@ -673,6 +688,42 @@ function runPdf(reportPath, outputDir, outName) {
         pdfPath: pdfMatch ? pdfMatch[1].trim() : '',
         reason: !pdfMatch ? 'PDF path not found in output' : '',
       });
+    });
+  });
+}
+
+/**
+ * Run generate-cover.mjs on a report. Mirrors runPdf — same shape, same env,
+ * same name-prefix flag. Cover letters are non-blocking: if this returns
+ * { ok: false }, the caller logs a warning but doesn't fail the row (the
+ * resume PDF is the primary artifact; cover letter is a bonus).
+ *
+ * Returns { ok, pdfPath, reason }.
+ */
+function runCoverLetter(reportPath, outputDir, outName) {
+  return new Promise((resolve) => {
+    let stdout = '';
+    let stderr = '';
+    const env = { ...process.env, OUTPUT_DIR: outputDir };
+    const cmdArgs = ['scripts/generate-cover.mjs', '--report', reportPath];
+    if (outName) cmdArgs.push('--out-name', outName);
+    const child = spawn(process.execPath, cmdArgs, {
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    child.stdout.on('data', (d) => { stdout += d.toString(); });
+    child.stderr.on('data', (d) => { stderr += d.toString(); });
+    child.on('close', (code) => {
+      const cleanStdout = stripAnsi(stdout);
+      if (code !== 0) {
+        return resolve({
+          ok: false,
+          reason: extractFailureReason(stripAnsi(stderr) || cleanStdout) || `exit ${code}`,
+        });
+      }
+      const pdfMatch = cleanStdout.match(/✓ Cover letter:\s+([^\n]+?)\s*$/m);
+      const pdfPath = pdfMatch ? pdfMatch[1].trim() : null;
+      resolve({ ok: !!pdfPath, pdfPath });
     });
   });
 }
