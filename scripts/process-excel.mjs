@@ -174,12 +174,28 @@ async function main() {
     const { url, rowNumber } = urls[i];
     const idx = i + 1;
 
-    // Skip rows that already have a PDF in the output folder. This is what
-    // makes resume work — we just look at what's on disk.
+    // Decide whether to skip this row based on what we're generating.
+    // - Default (resume + cover): skip if BOTH already exist.
+    // - SKIP_COVER_LETTERS:       skip if the resume already exists.
+    // - SKIP_RESUMES:             skip if the cover letter already exists.
+    // This is what makes resume-of-a-resumed-run work — re-running with the
+    // same mode picks up where it left off without redoing finished rows.
     const expectedStem = `${String(rowNumber).padStart(padWidth, '0')}_${nameSlug}_Resume`;
-    const expectedPdf = path.join(runFolder, expectedStem + '.pdf');
-    if (fs.existsSync(expectedPdf)) {
-      console.log(c.dim(`─── [${idx}/${urls.length}]  Excel row ${rowNumber}  → already done, skipping (${expectedStem}.pdf)`));
+    const expectedCoverStem = `${String(rowNumber).padStart(padWidth, '0')}_${nameSlug}_CoverLetter`;
+    const resumePdfExists = fs.existsSync(path.join(runFolder, expectedStem + '.pdf'));
+    const coverPdfExists  = fs.existsSync(path.join(runFolder, expectedCoverStem + '.pdf'));
+
+    let skipReason = '';
+    if (process.env.SKIP_RESUMES === 'true') {
+      if (coverPdfExists) skipReason = `cover already exists (${expectedCoverStem}.pdf)`;
+    } else if (process.env.SKIP_COVER_LETTERS === 'true') {
+      if (resumePdfExists) skipReason = `resume already exists (${expectedStem}.pdf)`;
+    } else {
+      // Both — skip only if both done
+      if (resumePdfExists && coverPdfExists) skipReason = 'both already done';
+    }
+    if (skipReason) {
+      console.log(c.dim(`─── [${idx}/${urls.length}]  Excel row ${rowNumber}  → skipping: ${skipReason}`));
       continue;
     }
 
@@ -233,9 +249,28 @@ async function main() {
     // Compute the final filename UPFRONT so the PDF lands with its
     // applicable name immediately — no rename pass needed at the end.
     // Format: "{ROW}_{Name}_Resume" — e.g. "02_Rajesh-Racha_Resume"
+    //
+    // Skip the resume step entirely if SKIP_RESUMES=true. Used when the user
+    // already generated resumes in a prior run and is making a second pass
+    // just for cover letters. The evaluation report is still produced above,
+    // so cover letter generation downstream still has what it needs.
     const finalStem = `${String(rowNumber).padStart(padWidth, '0')}_${nameSlug}_Resume`;
-    console.log(c.cyan(`  → generating PDF (${finalStem}.pdf)...`));
-    const pdfResult = await runPdf(evalResult.reportPath, runFolder, finalStem);
+    let pdfResult;
+    if (process.env.SKIP_RESUMES === 'true') {
+      // Pretend the PDF step succeeded so the cover letter step still runs.
+      // We mark the row with a note so the roster Excel reflects what happened.
+      const expectedPdf = path.join(runFolder, `${finalStem}.pdf`);
+      const pdfExists = fs.existsSync(expectedPdf);
+      pdfResult = {
+        ok: true,
+        pdfPath: pdfExists ? expectedPdf : '',
+        reason: pdfExists ? '' : 'skipped — SKIP_RESUMES=true',
+      };
+      console.log(c.dim(`  → resume skipped (SKIP_RESUMES=true)`));
+    } else {
+      console.log(c.cyan(`  → generating PDF (${finalStem}.pdf)...`));
+      pdfResult = await runPdf(evalResult.reportPath, runFolder, finalStem);
+    }
 
     if (!pdfResult.ok) {
       row.status = 'report_only';
@@ -250,7 +285,9 @@ async function main() {
     row.status = 'ok';
     stats.ok++;
     rosterRows.push(row);
-    console.log(c.green(`      ✓ PDF: ${row.pdf_file}`));
+    if (process.env.SKIP_RESUMES !== 'true') {
+      console.log(c.green(`      ✓ PDF: ${row.pdf_file}`));
+    }
     appendRow(summaryPath, row);
 
     // 3c. Generate the matching cover letter (same row prefix, _CoverLetter suffix).

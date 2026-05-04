@@ -426,9 +426,49 @@ async function excelFlow() {
     }
   }
 
+  // Ask which artifacts to generate per row. Defaults to "both" because that's
+  // what most users want — resume PDF AND a matching cover letter. Resume-only
+  // is the fast path (no scraping, no second LLM call). Cover-only is rare but
+  // useful when you've already generated resumes in a prior run and just want
+  // to add letters now.
+  console.log('');
+  console.log(c.bold('  What do you want to generate per job?'));
+  console.log(`    ${c.cyan('[1]')} Resume + cover letter ${c.dim('(default — slowest, ~2-3 min/job)')}`);
+  console.log(`    ${c.cyan('[2]')} Resume only           ${c.dim('(fastest, ~1-2 min/job)')}`);
+  console.log(`    ${c.cyan('[3]')} Cover letter only     ${c.dim('(only if resumes already exist)')}`);
+  console.log('');
+  const outputMode = (await ask(c.bold('  Choice [1/2/3] › '))).trim() || '1';
+
+  // Translate the choice into env vars the subprocess understands
+  const outputEnv = {};
+  if (outputMode === '2') {
+    outputEnv.SKIP_COVER_LETTERS = 'true';
+    console.log(c.dim('  → resumes only (cover letters skipped)'));
+  } else if (outputMode === '3') {
+    outputEnv.SKIP_RESUMES = 'true';
+    console.log(c.dim('  → cover letters only (resumes skipped — assumes they already exist)'));
+  } else {
+    console.log(c.dim('  → both resume + cover letter per job'));
+  }
+  console.log('');
+
   const go = (await ask(c.bold('  Proceed? [Y/n] › '))).toLowerCase();
   if (go === 'n') return;
-  await run('scripts/process-excel.mjs', ['--file', file, ...resumeArg]);
+  // Pass env through to the subprocess by putting it on process.env briefly.
+  // The run() helper inherits process.env; we set our flags, run, then unset.
+  const prevSkipCovers = process.env.SKIP_COVER_LETTERS;
+  const prevSkipResumes = process.env.SKIP_RESUMES;
+  if (outputEnv.SKIP_COVER_LETTERS) process.env.SKIP_COVER_LETTERS = outputEnv.SKIP_COVER_LETTERS;
+  if (outputEnv.SKIP_RESUMES)       process.env.SKIP_RESUMES       = outputEnv.SKIP_RESUMES;
+  try {
+    await run('scripts/process-excel.mjs', ['--file', file, ...resumeArg]);
+  } finally {
+    // Restore env so a subsequent menu action isn't affected
+    if (prevSkipCovers === undefined) delete process.env.SKIP_COVER_LETTERS;
+    else process.env.SKIP_COVER_LETTERS = prevSkipCovers;
+    if (prevSkipResumes === undefined) delete process.env.SKIP_RESUMES;
+    else process.env.SKIP_RESUMES = prevSkipResumes;
+  }
   await pause();
 }
 
