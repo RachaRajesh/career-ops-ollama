@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>career-ops — job search, but smarter</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0e0;
+      line-height: 1.6;
+    }
+
+    a { color: #00d4aa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* NAV */
+    nav {
+      padding: 20px 0;
+      border-bottom: 1px solid #1e1e30;
+    }
+    nav .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .nav-brand {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #fff;
+    }
+    .nav-brand span { color: #00d4aa; }
+    .nav-links a {
+      margin-left: 24px;
+      font-size: 0.9rem;
+      color: #999;
+    }
+    .nav-links a:hover { color: #00d4aa; text-decoration: none; }
+
+    /* HERO */
+    .hero {
+      padding: 100px 0 80px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 16px;
+      letter-spacing: -1px;
+    }
+    .hero h1 span { color: #00d4aa; }
+    .hero p {
+      font-size: 1.15rem;
+      color: #999;
+      max-width: 560px;
+      margin: 0 auto 32px;
+    }
+    .hero-buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+    .btn-primary {
+      background: #00d4aa;
+      color: #0f0f1a;
+      padding: 14px 32px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 1rem;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-primary:hover { background: #00b894; text-decoration: none; }
+    .btn-secondary {
+      background: transparent;
+      color: #00d4aa;
+      padding: 14px 32px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 1rem;
+      border: 1px solid #00d4aa;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-secondary:hover { background: rgba(0, 212, 170, 0.1); text-decoration: none; }
+
+    /* SECTIONS */
+    section { padding: 80px 0; }
+    section h2 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+    section .subtitle {
+      color: #888;
+      margin-bottom: 48px;
+      font-size: 1.05rem;
+    }
+
+    /* FEATURE CARDS */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 24px;
+    }
+    .card {
+      background: #16162a;
+      border: 1px solid #1e1e35;
+      border-radius: 12px;
+      padding: 32px 24px;
+      transition: border-color 0.2s;
+    }
+    .card:hover { border-color: #00d4aa; }
+    .card-icon {
+      font-size: 2.4rem;
+      margin-bottom: 16px;
+      display: block;
+    }
+    .card h3 {
+      font-size: 1.15rem;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .card p {
+      color: #888;
+      font-size: 0.95rem;
+    }
+
+    /* FLOWCHART */
+    .flow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      flex-wrap: wrap;
+      margin-top: 40px;
+    }
+    .flow-step {
+      background: #16162a;
+      border: 1px solid #1e1e35;
+      border-radius: 12px;
+      padding: 24px 20px;
+      text-align: center;
+      min-width: 160px;
+      flex: 1;
+      max-width: 200px;
+    }
+    .flow-step .step-icon {
+      font-size: 2rem;
+      display: block;
+      margin-bottom: 8px;
+    }
+    .flow-step h4 {
+      color: #fff;
+      font-size: 0.95rem;
+      margin-bottom: 4px;
+    }
+    .flow-step p {
+      color: #666;
+      font-size: 0.8rem;
+    }
+    .flow-arrow {
+      color: #00d4aa;
+      font-size: 1.5rem;
+      padding: 0 8px;
+      flex-shrink: 0;
+    }
+
+    /* WHY LOCAL */
+    .why-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+    .why-item {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .why-icon {
+      font-size: 1.6rem;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .why-item h4 {
+      color: #fff;
+      font-size: 1rem;
+      margin-bottom: 4px;
+    }
+    .why-item p {
+      color: #888;
+      font-size: 0.9rem;
+    }
+
+    /* SETUP */
+    .setup-steps {
+      counter-reset: step;
+    }
+    .setup-step {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 32px;
+      align-items: flex-start;
+    }
+    .step-number {
+      background: #00d4aa;
+      color: #0f0f1a;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.95rem;
+      flex-shrink: 0;
+    }
+    .step-content h4 {
+      color: #fff;
+      margin-bottom: 6px;
+    }
+    .step-content p {
+      color: #888;
+      font-size: 0.95rem;
+    }
+    .step-content code {
+      background: #1a1a30;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: #00d4aa;
+    }
+
+    /* WHO */
+    .who-list {
+      list-style: none;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .who-list li {
+      background: #16162a;
+      border: 1px solid #1e1e35;
+      border-radius: 8px;
+      padding: 16px 20px;
+      font-size: 0.95rem;
+      color: #ccc;
+    }
+    .who-list li strong { color: #fff; }
+
+    /* FOOTER */
+    footer {
+      border-top: 1px solid #1e1e30;
+      padding: 40px 0;
+      text-align: center;
+      color: #555;
+      font-size: 0.85rem;
+    }
+    footer a { color: #00d4aa; }
+
+    /* MOBILE */
+    @media (max-width: 640px) {
+      .hero h1 { font-size: 2rem; }
+      .flow { flex-direction: column; }
+      .flow-arrow { transform: rotate(90deg); }
+      .why-grid { grid-template-columns: 1fr; }
+      .who-list { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <div class="container">
+      <div class="nav-brand">career-ops <span>:</span>ollama</div>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="#setup">Setup</a>
+        <a href="https://github.com/RachaRajesh/career-ops-ollama">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="container">
+      <h1>Stop wasting time on <span>bad-fit jobs</span></h1>
+      <p>A job search assistant that runs entirely on your laptop. It scores jobs against your resume, tailors your CV, and fills out applications — all without your data ever leaving your machine.</p>
+      <div class="hero-buttons">
+        <a href="#setup" class="btn-primary">Get Started</a>
+        <a href="https://github.com/RachaRajesh/career-ops-ollama" class="btn-secondary">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <div class="container">
+      <h2>What does this actually do?</h2>
+      <p class="subtitle">Three things that used to take me hours every day.</p>
+      <div class="cards">
+        <div class="card">
+          <span class="card-icon">&#x1F4AF;</span>
+          <h3>Score jobs instantly</h3>
+          <p>Paste a job URL and get a 1-5 score based on how well it matches your resume. No more reading 200-word descriptions just to find out you're not qualified.</p>
+        </div>
+        <div class="card">
+          <span class="card-icon">&#x1F4C4;</span>
+          <h3>Tailor your resume</h3>
+          <p>For each job, it rewords your existing bullets to surface the keywords they're looking for. No lying, no inflating — just better framing of what you've already done.</p>
+        </div>
+        <div class="card">
+          <span class="card-icon">&#x1F575;&#xFE0F;</span>
+          <h3>Auto-fill applications</h3>
+          <p>Opens the actual application form in a browser, fills in your details, and pauses for you to review. You still click submit — it just saves you the tedious typing.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="how" style="background: #12121f;">
+    <div class="container">
+      <h2>How it works</h2>
+      <p class="subtitle">Paste a link, get an answer. That's basically it.</p>
+      <div class="flow">
+        <div class="flow-step">
+          <span class="step-icon">&#x1F517;</span>
+          <h4>Paste job URL</h4>
+          <p>LinkedIn, Greenhouse, Lever, whatever</p>
+        </div>
+        <span class="flow-arrow">&rarr;</span>
+        <div class="flow-step">
+          <span class="step-icon">&#x1F916;</span>
+          <h4>AI reads it</h4>
+          <p>Local model compares job to your resume</p>
+        </div>
+        <span class="flow-arrow">&rarr;</span>
+        <div class="flow-step">
+          <span class="step-icon">&#x1F4CA;</span>
+          <h4>Get a score</h4>
+          <p>1-5 rating + strengths and gaps</p>
+        </div>
+        <span class="flow-arrow">&rarr;</span>
+        <div class="flow-step">
+          <span class="step-icon">&#x1F4E6;</span>
+          <h4>Tailor &amp; Apply</h4>
+          <p>Custom PDF + auto-filled form</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHY LOCAL -->
+  <section>
+    <div class="container">
+      <h2>Why does "local" matter?</h2>
+      <p class="subtitle">Your job search is nobody else's business.</p>
+      <div class="why-grid">
+        <div class="why-item">
+          <span class="why-icon">&#x1F512;</span>
+          <div>
+            <h4>Your resume stays on your laptop</h4>
+            <p>No cloud servers, no "we store your data securely" promises. It's just files on your machine.</p>
+          </div>
+        </div>
+        <div class="why-item">
+          <span class="why-icon">&#x1F310;</span>
+          <div>
+            <h4>Works offline</h4>
+            <p>Once the model is downloaded, you don't need internet for the AI part. Works on a plane, in a cafe, anywhere.</p>
+          </div>
+        </div>
+        <div class="why-item">
+          <span class="why-icon">&#x1F4B0;</span>
+          <div>
+            <h4>No API costs</h4>
+            <p>No per-request charges. Download the model once, use it forever. Your electricity bill won't even notice.</p>
+          </div>
+        </div>
+        <div class="why-item">
+          <span class="why-icon">&#x1F6E1;&#xFE0F;</span>
+          <div>
+            <h4>No rate limits</h4>
+            <p>Evaluate 10 jobs or 1000. No "you've exceeded your quota" messages. It's your hardware.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHO IS THIS FOR -->
+  <section style="background: #12121f;">
+    <div class="container">
+      <h2>Who is this for?</h2>
+      <p class="subtitle">Honestly? Anyone who's tired of the job search grind.</p>
+      <ul class="who-list">
+        <li><strong>New grads</strong> applying to 50+ jobs a week and getting burned out</li>
+        <li><strong>Career switchers</strong> who need help framing old experience for new roles</li>
+        <li><strong>Anyone on a visa</strong> who needs tailored resumes but can't afford a service</li>
+        <li><strong>People who value privacy</strong> and don't want their resume on some startup's server</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- SETUP -->
+  <section id="setup">
+    <div class="container">
+      <h2>Get it running</h2>
+      <p class="subtitle">Takes about 15 minutes. Most of that is downloading the model.</p>
+      <div class="setup-steps">
+        <div class="setup-step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h4>Install Ollama</h4>
+            <p>It's the thing that runs AI models on your computer. <code>brew install ollama</code> on Mac, or grab it from <a href="https://ollama.com/download">ollama.com</a> for Windows/Linux.</p>
+          </div>
+        </div>
+        <div class="setup-step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h4>Download a model</h4>
+            <p>This is the big download — 5-20 GB. Only happens once. <code>ollama pull qwen2.5:14b</code> is the sweet spot for most laptops.</p>
+          </div>
+        </div>
+        <div class="setup-step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h4>Clone and install</h4>
+            <p><code>git clone https://github.com/RachaRajesh/career-ops-ollama.git</code><br>
+            <code>cd career-ops-ollama && npm install</code></p>
+          </div>
+        </div>
+        <div class="setup-step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <h4>Add your resume</h4>
+            <p>Copy <code>cv.example.md</code> to <code>cv.md</code> and paste your real resume in. This is what the AI compares jobs against.</p>
+          </div>
+        </div>
+        <div class="setup-step">
+          <div class="step-number">5</div>
+          <div class="step-content">
+            <h4>Run it</h4>
+            <p><code>npm start</code> — you'll see a menu. Pick option 1 to evaluate your first job. That's it.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section style="background: #12121f; text-align: center; padding: 60px 0;">
+    <div class="container">
+      <h2 style="margin-bottom: 16px;">Ready to stop guessing?</h2>
+      <p class="subtitle" style="margin-bottom: 32px;">Star the repo, clone it, and try it on your next application.</p>
+      <a href="https://github.com/RachaRajesh/career-ops-ollama" class="btn-primary">View on GitHub</a>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="container">
+      <p>Built by <a href="https://github.com/RachaRajesh">Rajesh Racha</a> &middot; MIT License &middot; Forked from <a href="https://github.com/santifer/career-ops">santifer/career-ops</a></p>
+    </div>
+  </footer>
+
+</body>
+</html>
